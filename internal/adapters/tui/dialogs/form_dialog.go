@@ -9,10 +9,6 @@ import (
 )
 
 var (
-	formStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1, 2)
 	formLabelStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	formInputStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 	formActiveStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
@@ -45,6 +41,10 @@ func NewFormDialog(title string, fields []FormField, onSubmit func(FormResult) t
 		width:    50,
 		onSubmit: onSubmit,
 	}
+}
+
+func (d *FormDialog) SetWidth(w int) {
+	d.width = w
 }
 
 func (d *FormDialog) Init() tea.Cmd {
@@ -100,6 +100,16 @@ func (d *FormDialog) Update(msg tea.Msg) (*FormDialog, tea.Cmd) {
 }
 
 func (d *FormDialog) View() string {
+	boxW := d.width
+	if boxW < 40 {
+		boxW = 40
+	}
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(boxW)
+
 	var lines []string
 	lines = append(lines, dialogTitle.Render(d.title))
 	lines = append(lines, "")
@@ -132,12 +142,8 @@ func (d *FormDialog) View() string {
 	}
 	lines = append(lines, "  "+submitBtn)
 
-	width := d.width
-	if width < 40 {
-		width = 40
-	}
 	content := strings.Join(lines, "\n")
-	return formStyle.Copy().Width(width).Render(content)
+	return style.Render(content)
 }
 
 func (d *FormDialog) Active() bool {

@@ -2,18 +2,12 @@ package dialogs
 
 import (
 	"fmt"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	promptStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1, 2).
-			Width(50)
 	promptLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	promptInput = lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 )
@@ -26,6 +20,7 @@ type PromptDialog struct {
 	value    string
 	cursor   int
 	active   bool
+	width    int
 	onResult func(PromptResult) tea.Msg
 }
 
@@ -34,8 +29,13 @@ func NewPromptDialog(title, label string, onResult func(PromptResult) tea.Msg) *
 		title:    title,
 		label:    label,
 		active:   true,
+		width:    50,
 		onResult: onResult,
 	}
+}
+
+func (d *PromptDialog) SetWidth(w int) {
+	d.width = w
 }
 
 func (d *PromptDialog) Init() tea.Cmd {
@@ -102,7 +102,16 @@ func (d *PromptDialog) View() string {
 		promptInput.Render(display[:d.cursor]+cursor+display[d.cursor:]),
 	)
 
-	return promptStyle.Render(content)
+	boxW := d.width
+	if boxW < 40 {
+		boxW = 40
+	}
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(boxW)
+	return style.Render(content)
 }
 
 func (d *PromptDialog) Active() bool {
@@ -120,5 +129,3 @@ func (d *PromptDialog) Focused() bool {
 func (d *PromptDialog) SetFocused(f bool) {
 	d.active = f
 }
-
-var _ = strings.Builder{}

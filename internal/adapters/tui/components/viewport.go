@@ -3,120 +3,122 @@ package components
 import (
 	"strings"
 
-	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/lipgloss"
 )
 
+var viewportStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color("250"))
+
 type Viewport struct {
-	width   int
-	height  int
-	content []string
-	offset  int
+	content  []string
+	offset   int
+	width    int
+	height   int
+	maxLines int
 }
 
 func NewViewport(width, height int) *Viewport {
 	return &Viewport{
-		width:   width,
-		height:  height,
-		content: []string{},
-		offset:  0,
+		width:  width,
+		height: height,
 	}
 }
 
-func (v *Viewport) SetSize(w, h int) {
-	v.width = w
-	v.height = h
-	v.clampOffset()
-}
-
-func (v *Viewport) SetContent(lines []string) {
-	v.content = lines
-	v.clampOffset()
-	v.scrollToBottom()
-}
-
-func (v *Viewport) AddLine(line string) {
-	v.content = append(v.content, line)
-	v.scrollToBottom()
-}
-
-func (v *Viewport) scrollToBottom() {
-	totalLines := len(v.content)
-	if totalLines > v.height {
-		v.offset = totalLines - v.height
-	} else {
-		v.offset = 0
+func (v *Viewport) SetContent(content any) {
+	var lines []string
+	switch c := content.(type) {
+	case string:
+		lines = strings.Split(c, "\n")
+	case []string:
+		lines = c
+	default:
+		return
 	}
-}
-
-func (v *Viewport) ScrollUp(n int) {
-	v.offset -= n
-	v.clampOffset()
-}
-
-func (v *Viewport) ScrollDown(n int) {
-	v.offset += n
-	v.clampOffset()
-}
-
-func (v *Viewport) ScrollToTop() {
-	v.offset = 0
-}
-
-func (v *Viewport) ScrollToBottom() {
-	v.scrollToBottom()
-}
-
-func (v *Viewport) clampOffset() {
-	totalLines := len(v.content)
-	maxOffset := totalLines - v.height
-	if maxOffset < 0 {
-		maxOffset = 0
+	var wrapped []string
+	for _, line := range lines {
+		if v.width > 0 && len([]rune(line)) > v.width {
+			runes := []rune(line)
+			for len(runes) > 0 {
+				if len(runes) <= v.width {
+					wrapped = append(wrapped, string(runes))
+					break
+				}
+				wrapped = append(wrapped, string(runes[:v.width]))
+				runes = runes[v.width:]
+			}
+		} else {
+			wrapped = append(wrapped, line)
+		}
 	}
-	if v.offset > maxOffset {
-		v.offset = maxOffset
+	v.content = wrapped
+	v.maxLines = len(wrapped)
+	if v.offset > v.maxLines-v.height {
+		v.offset = v.maxLines - v.height
 	}
 	if v.offset < 0 {
 		v.offset = 0
 	}
 }
 
-func (v *Viewport) AtBottom() bool {
-	return v.offset >= len(v.content)-v.height
+func (v *Viewport) SetWidth(w int) {
+	v.width = w
 }
 
-func (v *Viewport) Update(msg tea.Msg) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "pgup":
-			v.ScrollUp(v.height)
-		case "pgdown":
-			v.ScrollDown(v.height)
-		case "up":
-			v.ScrollUp(1)
-		case "down":
-			v.ScrollDown(1)
-		}
+func (v *Viewport) SetHeight(h int) {
+	v.height = h
+}
+
+func (v *Viewport) SetSize(w, h int) {
+	v.width = w
+	v.height = h
+}
+
+func (v *Viewport) AddLine(line string) {
+	v.content = append(v.content, line)
+	v.maxLines = len(v.content)
+	if len(v.content) > v.height {
+		v.offset = len(v.content) - v.height
 	}
+}
+
+func (v *Viewport) ScrollUp(n int) {
+	v.offset -= n
+	if v.offset < 0 {
+		v.offset = 0
+	}
+}
+
+func (v *Viewport) ScrollDown(n int) {
+	v.offset += n
+	if v.offset > v.maxLines-v.height {
+		v.offset = v.maxLines - v.height
+	}
+	if v.offset < 0 {
+		v.offset = 0
+	}
+}
+
+func (v *Viewport) AtTop() bool {
+	return v.offset <= 0
+}
+
+func (v *Viewport) AtBottom() bool {
+	return v.offset >= v.maxLines-v.height
+}
+
+func (v *Viewport) Update(msg any) {
 }
 
 func (v *Viewport) View() string {
 	if len(v.content) == 0 {
-		return strings.Repeat("\n", v.height-1)
+		return ""
 	}
 
-	visible := v.content
-	if len(visible) > v.height {
-		end := v.offset + v.height
-		if end > len(visible) {
-			end = len(visible)
-		}
-		visible = visible[v.offset:end]
+	end := v.offset + v.height
+	if end > len(v.content) {
+		end = len(v.content)
 	}
 
-	for len(visible) < v.height {
-		visible = append(visible, "")
-	}
-
-	return strings.Join(visible, "\n")
+	visible := v.content[v.offset:end]
+	return viewportStyle.Render(strings.Join(visible, "\n"))
 }

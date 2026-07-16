@@ -190,9 +190,19 @@ func (p *CommandPalette) View() string {
 
 		cmd := "/" + entry.Command
 		desc := entry.Description
-		paddedCmd := cmd + strings.Repeat(" ", 18-len(cmd))
-		if len(cmd) > 18 {
-			paddedCmd = cmd[:18]
+
+		cmdW := p.width / 3
+		if cmdW < 16 {
+			cmdW = 16
+		}
+		if cmdW > 22 {
+			cmdW = 22
+		}
+		paddedCmd := cmd
+		if len([]rune(cmd)) > cmdW {
+			paddedCmd = string([]rune(cmd)[:cmdW])
+		} else {
+			paddedCmd = cmd + strings.Repeat(" ", cmdW-len([]rune(cmd)))
 		}
 
 		lines = append(lines, fmt.Sprintf("%s %s%s %s",

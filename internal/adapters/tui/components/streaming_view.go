@@ -48,8 +48,12 @@ func (s *StreamingView) View() string {
 	}
 
 	display := s.content
-	if s.width > 0 && len(display) > s.width {
-		display = display[:s.width]
+	if s.width > 0 {
+		runes := []rune(display)
+		if len(runes) > s.width {
+			runes = runes[len(runes)-s.width:]
+		}
+		display = string(runes)
 	}
 
 	return streamingStyle.Render(display) + cursorStyle.Render(s.cursor)

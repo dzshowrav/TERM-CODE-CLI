@@ -77,7 +77,14 @@ func (s *HelpScreen) View() string {
 	for _, sec := range sections {
 		lines = append(lines, helpSec.Render("── "+sec.name+" ──"))
 		for _, e := range sec.entries {
-			padding := 18 - len(e.cmd)
+			cmdW := s.width / 3
+			if cmdW < 16 {
+				cmdW = 16
+			}
+			if cmdW > 22 {
+				cmdW = 22
+			}
+			padding := cmdW - len(e.cmd)
 			if padding < 1 {
 				padding = 1
 			}

@@ -8,11 +8,6 @@ import (
 )
 
 var (
-	dialogStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1, 2).
-			Width(40)
 	dialogTitle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	dialogText     = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	dialogActive   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
@@ -26,6 +21,7 @@ type ConfirmDialog struct {
 	message  string
 	yes      bool
 	active   bool
+	width    int
 	onResult func(ConfirmResult) tea.Msg
 }
 
@@ -35,8 +31,13 @@ func NewConfirmDialog(title, message string, onResult func(ConfirmResult) tea.Ms
 		message:  message,
 		yes:      true,
 		active:   true,
+		width:    40,
 		onResult: onResult,
 	}
+}
+
+func (d *ConfirmDialog) SetWidth(w int) {
+	d.width = w
 }
 
 func (d *ConfirmDialog) Init() tea.Cmd {
@@ -84,7 +85,16 @@ func (d *ConfirmDialog) View() string {
 		yesBtn, noBtn,
 	)
 
-	return dialogStyle.Render(content)
+	boxW := d.width
+	if boxW < 40 {
+		boxW = 40
+	}
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(boxW)
+	return style.Render(content)
 }
 
 func (d *ConfirmDialog) Active() bool {

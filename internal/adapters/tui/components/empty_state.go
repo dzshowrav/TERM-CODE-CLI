@@ -1,27 +1,16 @@
 package components
 
-import (
-	"fmt"
-
-	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	emptyTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	emptyHint  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
-)
+import "github.com/charmbracelet/lipgloss"
 
 type EmptyState struct {
-	title string
-	hint  string
-	width int
+	message string
+	width   int
 }
 
-func NewEmptyState(title, hint string) *EmptyState {
+func NewEmptyState() *EmptyState {
 	return &EmptyState{
-		title: title,
-		hint:  hint,
-		width: 80,
+		message: "No items to display.",
+		width:   80,
 	}
 }
 
@@ -29,21 +18,16 @@ func (e *EmptyState) SetWidth(w int) {
 	e.width = w
 }
 
-func (e *EmptyState) SetTitle(title string) {
-	e.title = title
-}
-
-func (e *EmptyState) SetHint(hint string) {
-	e.hint = hint
+func (e *EmptyState) SetMessage(msg string) {
+	e.message = msg
 }
 
 func (e *EmptyState) Render() string {
-	lines := []string{
-		"",
-		emptyTitle.Render(e.title),
-		"",
-		emptyHint.Render(e.hint),
-		"",
-	}
-	return fmt.Sprintf("%s\n%s\n%s", lines[0], lines[1], lines[3])
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240")).
+		Italic(true).
+		Width(e.width).
+		Align(lipgloss.Center).
+		Padding(1, 2)
+	return style.Render(e.message)
 }

@@ -9,10 +9,6 @@ import (
 )
 
 var (
-	selectStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("39")).
-			Padding(1, 2)
 	selItemStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	selActiveStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
 )
@@ -28,6 +24,7 @@ type SelectDialog struct {
 	title    string
 	items    []SelectItem
 	selected int
+	width    int
 	height   int
 	active   bool
 	onSelect func(SelectResult) tea.Msg
@@ -37,10 +34,15 @@ func NewSelectDialog(title string, items []SelectItem, onSelect func(SelectResul
 	return &SelectDialog{
 		title:    title,
 		items:    items,
+		width:    50,
 		height:   10,
 		active:   true,
 		onSelect: onSelect,
 	}
+}
+
+func (d *SelectDialog) SetWidth(w int) {
+	d.width = w
 }
 
 func (d *SelectDialog) Init() tea.Cmd {
@@ -80,8 +82,15 @@ func (d *SelectDialog) Update(msg tea.Msg) (*SelectDialog, tea.Cmd) {
 }
 
 func (d *SelectDialog) View() string {
-	width := 50
-	selStyle := selectStyle.Copy().Width(width)
+	boxW := d.width
+	if boxW < 40 {
+		boxW = 40
+	}
+	style := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("39")).
+		Padding(1, 2).
+		Width(boxW)
 
 	var lines []string
 	lines = append(lines, dialogTitle.Render(d.title))
@@ -89,16 +98,22 @@ func (d *SelectDialog) View() string {
 
 	for i, item := range d.items {
 		prefix := "  "
-		style := selItemStyle
+		itemStyle := selItemStyle
 		if i == d.selected {
 			prefix = "> "
-			style = selActiveStyle
+			itemStyle = selActiveStyle
 		}
-		lines = append(lines, prefix+style.Render(item.Label))
+
+		label := item.Label
+		maxLabel := boxW - 6
+		if len(label) > maxLabel {
+			label = label[:maxLabel]
+		}
+		lines = append(lines, prefix+itemStyle.Render(label))
 	}
 
 	content := strings.Join(lines, "\n")
-	return selStyle.Render(content)
+	return style.Render(content)
 }
 
 func (d *SelectDialog) Active() bool {

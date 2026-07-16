@@ -50,7 +50,8 @@ func (p *ProgressBar) Percent() float64 {
 }
 
 func (p *ProgressBar) View() string {
-	barWidth := p.width - len(p.label) - 10
+	labelW := lipgloss.Width(p.label)
+	barWidth := p.width - labelW - 10
 	if barWidth < 5 {
 		barWidth = 5
 	}

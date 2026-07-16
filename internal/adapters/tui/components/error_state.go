@@ -1,29 +1,15 @@
 package components
 
-import (
-	"fmt"
-
-	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	errorIcon  = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("!")
-	errorTitle = lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
-	errorMsg   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	errorHint  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
-)
+import "github.com/charmbracelet/lipgloss"
 
 type ErrorState struct {
 	message string
-	hint    string
 	width   int
 }
 
-func NewErrorState(message, hint string) *ErrorState {
+func NewErrorState() *ErrorState {
 	return &ErrorState{
-		message: message,
-		hint:    hint,
-		width:   80,
+		width: 80,
 	}
 }
 
@@ -36,11 +22,11 @@ func (e *ErrorState) SetMessage(msg string) {
 }
 
 func (e *ErrorState) Render() string {
-	return fmt.Sprintf(
-		"%s %s\n%s\n%s",
-		errorIcon,
-		errorTitle.Render("Error"),
-		errorMsg.Render(e.message),
-		errorHint.Render(e.hint),
-	)
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Bold(true).
+		Width(e.width).
+		Align(lipgloss.Center).
+		Padding(1, 2)
+	return style.Render("Error: " + e.message)
 }

@@ -2,6 +2,7 @@ package components
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -136,24 +137,37 @@ func (c *CommandInput) View() string {
 	display := c.value
 	if display == "" {
 		display = "Type a message or / for commands..."
-		dispLen := len(display)
+		runes := []rune(display)
 		maxLen := c.width - 4
-		if dispLen > maxLen {
-			display = display[:maxLen]
+		if len(runes) > maxLen {
+			runes = runes[:maxLen]
 		}
-		return inputStyle.Render(inputPrompt + display)
+		return inputStyle.Render(inputPrompt + string(runes))
 	}
 
-	dispLen := len(display)
+	runes := []rune(display)
 	maxLen := c.width - 4
-	if dispLen > maxLen {
-		display = display[dispLen-maxLen:]
+	if len(runes) > maxLen {
+		runes = runes[len(runes)-maxLen:]
 	}
+	disp := string(runes)
+
+	cursorRunes := []rune(disp)
+	cursorPos := utf8.RuneCountInString(disp[:min(c.cursor, len(disp))])
 
 	cursor := ""
-	if c.focused && c.cursor <= len(display) {
+	if c.focused {
 		cursor = "█"
 	}
 
-	return inputStyle.Render(inputPrompt + display[:c.cursor] + cursor + display[c.cursor:])
+	before := string(cursorRunes[:cursorPos])
+	after := string(cursorRunes[cursorPos:])
+	return inputStyle.Render(inputPrompt + before + cursor + after)
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

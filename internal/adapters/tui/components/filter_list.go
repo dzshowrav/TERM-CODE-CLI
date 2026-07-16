@@ -147,9 +147,20 @@ func (l *FilterList) View() string {
 			activeMark = listSelStyle.Render(" ✓")
 		}
 
-		lines = append(lines, prefix+style.Render(item.Label)+activeMark)
+		label := item.Label
+		maxLabel := l.width - 6
+		if len([]rune(label)) > maxLabel {
+			label = string([]rune(label)[:maxLabel])
+		}
+
+		lines = append(lines, prefix+style.Render(label)+activeMark)
 		if item.Subtitle != "" {
-			lines = append(lines, "   "+listSubStyle.Render(item.Subtitle))
+			sub := item.Subtitle
+			maxSub := l.width - 8
+			if len([]rune(sub)) > maxSub {
+				sub = string([]rune(sub)[:maxSub])
+			}
+			lines = append(lines, "   "+listSubStyle.Render(sub))
 		}
 	}
 

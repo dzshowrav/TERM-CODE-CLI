@@ -50,10 +50,11 @@ func (b *CodeBlock) Render() string {
 	lines := strings.Split(b.code, "\n")
 	var formatted []string
 	for _, line := range lines {
-		if len(line) > codeWidth {
-			line = line[:codeWidth]
+		runes := []rune(line)
+		if len(runes) > codeWidth {
+			runes = runes[:codeWidth]
 		}
-		formatted = append(formatted, line)
+		formatted = append(formatted, string(runes))
 	}
 
 	parts = append(parts, codeBlockStyle.Width(codeWidth).Render(strings.Join(formatted, "\n")))

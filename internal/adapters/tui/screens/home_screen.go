@@ -77,7 +77,8 @@ func (s *HomeScreen) View() string {
 
 	hint := styles.HintStyle.Render("Type a message or / for commands")
 
-	availableLines := s.height - 10
+	contentLines := 8
+	availableLines := s.height - contentLines
 	if availableLines < 1 {
 		availableLines = 1
 	}

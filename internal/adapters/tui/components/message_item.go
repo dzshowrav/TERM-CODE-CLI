@@ -1,14 +1,16 @@
 package components
 
 import (
+	"fmt"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
 var (
-	userContentStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	assistantStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
-	systemContentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
-	codeStyle          = lipgloss.NewStyle().Foreground(lipgloss.Color("83")).Background(lipgloss.Color("235"))
+	roleUser      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39")).Render("You")
+	roleAssistant = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("83")).Render("AI")
+	roleSystem    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("240")).Render("Sys")
+	roleTool      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214")).Render("Tool")
 )
 
 type MessageItemRenderer struct {
@@ -19,17 +21,38 @@ func NewMessageItemRenderer(width int) *MessageItemRenderer {
 	return &MessageItemRenderer{width: width}
 }
 
-func (r *MessageItemRenderer) Render(msg MessageItem) string {
-	var style lipgloss.Style
-	switch msg.Role {
+func (r *MessageItemRenderer) SetWidth(w int) {
+	r.width = w
+}
+
+func (r *MessageItemRenderer) Render(role, content string) string {
+	var label string
+	switch role {
 	case "user":
-		style = userContentStyle
+		label = roleUser
 	case "assistant":
-		style = assistantStyle
+		label = roleAssistant
+	case "system":
+		label = roleSystem
+	case "tool":
+		label = roleTool
 	default:
-		style = systemContentStyle
+		label = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("245")).Render(role)
 	}
 
-	roleStr := formatRole(msg.Role)
-	return roleStr + " " + style.Render(msg.Content)
+	available := r.width - 4
+	if available < 20 {
+		available = 20
+	}
+	contentLines := wrapLines(content, available)
+
+	var buf string
+	for _, l := range contentLines {
+		if buf != "" {
+			buf += "\n"
+		}
+		buf += l
+	}
+
+	return fmt.Sprintf("%s\n%s", label, buf)
 }

@@ -83,12 +83,34 @@ func (s *ToolExecutionScreen) View() string {
 			lines = append(lines, fmt.Sprintf("   %s", toolExContent.Render(t.Input)))
 		}
 		if t.Output != "" {
+			maxW := s.width - 6
+			if maxW < 20 {
+				maxW = 20
+			}
 			for _, line := range strings.Split(t.Output, "\n") {
-				lines = append(lines, fmt.Sprintf("   %s", toolExContent.Render(line)))
+				runes := []rune(line)
+				for len(runes) > maxW {
+					lines = append(lines, fmt.Sprintf("   %s", toolExContent.Render(string(runes[:maxW]))))
+					runes = runes[maxW:]
+				}
+				if len(runes) > 0 {
+					lines = append(lines, fmt.Sprintf("   %s", toolExContent.Render(string(runes))))
+				}
 			}
 		}
 		if t.Error != "" {
-			lines = append(lines, fmt.Sprintf("   %s", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(t.Error)))
+			maxW := s.width - 6
+			if maxW < 20 {
+				maxW = 20
+			}
+			errRunes := []rune(t.Error)
+			for len(errRunes) > maxW {
+				lines = append(lines, fmt.Sprintf("   %s", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(string(errRunes[:maxW]))))
+				errRunes = errRunes[maxW:]
+			}
+			if len(errRunes) > 0 {
+				lines = append(lines, fmt.Sprintf("   %s", lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(string(errRunes))))
+			}
 		}
 		lines = append(lines, "")
 	}
