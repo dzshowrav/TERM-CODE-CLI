@@ -1,0 +1,352 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "agent": {
+    "build": {
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "go-expert": {
+      "description": "Go development expert using best practices, clean architecture, and idiomatic Go patterns",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/go-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "bubbletea-expert": {
+      "description": "Bubble Tea TUI framework expert for building terminal user interfaces with The Elm Architecture",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/bubbletea-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "lipgloss-expert": {
+      "description": "Lip Gloss styling expert for terminal UI styling, colors, layouts, and text formatting",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/lipgloss-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "mcp-expert": {
+      "description": "MCP (Model Context Protocol) server expert for building and integrating MCP servers",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/mcp-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "treesitter-expert": {
+      "description": "Tree-sitter parsing expert for syntax trees, incremental parsing, and code analysis",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/treesitter-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "postgres-expert": {
+      "description": "PostgreSQL expert for database schema design, queries, optimization, and migrations",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/postgres-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "redis-expert": {
+      "description": "Redis expert for caching strategies, data structures, pub/sub, and performance tuning",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/redis-expert.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "architect": {
+      "description": "Software architecture expert for system design, clean architecture, and design patterns",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/architect.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "security-auditor": {
+      "description": "Security expert for vulnerability assessment, secure coding, and threat modeling",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/security-auditor.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "perf-engineer": {
+      "description": "Performance engineering expert for profiling, optimization, and benchmarking",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/perf-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "master-architect": {
+      "description": "Highest authority - architecture decisions, agent coordination, project health",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/master-architect.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "task-planner": {
+      "description": "Converts requests into structured execution plans with task decomposition",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/task-planner.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "context-engine": {
+      "description": "Collects, organizes, and distributes minimal relevant context",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/context-engine.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "memory-engine": {
+      "description": "Preserves and retrieves long-term project knowledge and decisions",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/memory-engine.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "reasoning-engine": {
+      "description": "Transforms context into decisions using structured analysis",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/reasoning-engine.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "go-engineer": {
+      "description": "Primary Go implementation for business logic, services, domain models",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/go-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "bubbletea-engineer": {
+      "description": "Bubble Tea TUI: terminal app architecture, models, screens, components",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/bubbletea-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "uiux-engineer": {
+      "description": "Mobile-first terminal UX: layout, accessibility, navigation, interaction design",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/uiux-engineer.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "terminal-engineer": {
+      "description": "Terminal runtime: ANSI, Unicode, keyboard input, viewport, rendering",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/terminal-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "mcp-engineer": {
+      "description": "MCP integrations: tool execution, server connections, schema validation",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/mcp-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "database-engineer": {
+      "description": "Database architecture, schema, migrations, queries, persistence",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/database-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "git-engineer": {
+      "description": "Version control, branches, commits, history analysis, release workflows",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/git-engineer.md}",
+      "permission": {
+        "edit": "ask",
+        "bash": "ask"
+      }
+    },
+    "testing-engineer": {
+      "description": "Quality assurance: unit, integration, e2e, performance, security testing",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/testing-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "allow"
+      }
+    },
+    "security-engineer": {
+      "description": "Security: vulnerability prevention, data protection, permission validation",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/security-engineer.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "performance-engineer": {
+      "description": "Performance: startup, memory, CPU, rendering, database, AI context optimization",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/performance-engineer.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "ask"
+      }
+    },
+    "documentation-engineer": {
+      "description": "Documentation: guides, API refs, architecture docs, changelogs",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/documentation-engineer.md}",
+      "permission": {
+        "edit": "allow",
+        "bash": "deny"
+      }
+    },
+    "review-engineer": {
+      "description": "Final quality gate: code, architecture, security, performance, docs review",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/review-engineer.md}",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny"
+      }
+    },
+    "release-engineer": {
+      "description": "Release planning, validation, version management, artifact generation",
+      "mode": "subagent",
+      "model": "anthropic/claude-sonnet-4-5",
+      "prompt": "{file:.opencode/agents/release-engineer.md}",
+      "permission": {
+        "edit": "ask",
+        "bash": "ask"
+      }
+    }
+  },
+  "command": {
+    "feature": {
+      "template": "Create a new feature following the team's conventions.\n\nFeature name: $ARGUMENTS\n\nRequirements:\n- Mobile First and Termux Only approach\n- Go best practices and clean architecture\n- No mock data, no emoji\n- Full file output, modular code\n- Production ready quality\n- Bubble Tea architecture (if TUI involved)\n\nSteps:\n1. Design the domain model and interfaces first\n2. Implement the core logic\n3. Add tests\n4. Verify with lint and typecheck",
+      "description": "Create a new feature following conventions",
+      "agent": "build"
+    },
+    "component": {
+      "template": "Create a new Bubble Tea component.\n\nComponent name: $ARGUMENTS\n\nFollow Bubble Tea architecture:\n- Model struct with tea.Model interface\n- Init, Update, View methods\n- Proper Cmds for side effects\n- Lip Gloss styling\n- Modular and composable design\n- Mobile First terminal sizing\n- No mock data\n- Production ready",
+      "description": "Create a new Bubble Tea component",
+      "agent": "bubbletea-expert"
+    },
+    "command": {
+      "template": "Create a new custom command definition.\n\nCommand name: $ARGUMENTS\n\nFollow the opencode command template:\n- Markdown file with frontmatter\n- Clear description of what the command does\n- Well-structured template with $ARGUMENTS placeholders\n- Optional agent and model configuration\n- Test the command after creation",
+      "description": "Create a new custom command",
+      "agent": "build"
+    },
+    "mcp": {
+      "template": "Create a new MCP server.\n\nMCP server name: $ARGUMENTS\n\nFollow the MCP template:\n- Go implementation using the MCP SDK\n- Clean architecture with separation of concerns\n- Proper tool, resource, and prompt definitions\n- Input validation and error handling\n- Termux compatible (no platform-specific dependencies)\n- Test coverage\n- README with usage instructions",
+      "description": "Create a new MCP server",
+      "agent": "mcp-expert"
+    },
+    "screen": {
+      "template": "Create a new Bubble Tea screen/view.\n\nScreen name: $ARGUMENTS\n\nFollow Bubble Tea screen template:\n- Full screen model with state management\n- Init, Update, View methods\n- Lip Gloss styling with responsive layout\n- Mobile First terminal sizing\n- Keyboard navigation\n- Proper Cmd handling for async operations\n- Modular design for composability\n- No mock data",
+      "description": "Create a new Bubble Tea screen",
+      "agent": "bubbletea-expert"
+    },
+    "test": {
+      "template": "Write comprehensive tests.\n\nTest target: $ARGUMENTS\n\nFollow testing best practices:\n- Table-driven tests in Go\n- Cover happy path, edge cases, error paths\n- Use testify or standard testing package\n- No mock data, use real/fake implementations\n- Tests should be deterministic\n- Include both unit and integration tests where appropriate\n- Run tests after creation to verify",
+      "description": "Write tests following best practices",
+      "agent": "build"
+    },
+    "docs": {
+      "template": "Write documentation.\n\nDocumentation target: $ARGUMENTS\n\nFollow documentation template:\n- Clear, concise, and accurate\n- Focus on API and usage examples\n- Include setup and configuration steps\n- Note Termux-specific considerations\n- No emoji\n- Markdown format with proper headings and code blocks",
+      "description": "Write documentation",
+      "agent": "build"
+    }
+  },
+  "permission": {
+    "edit": "ask",
+    "bash": "ask"
+  },
+  "instructions": [
+    "AGENTS.md",
+    "sub-agents/01-core-rules.md",
+    "sub-agents/02-agent-protocol.md",
+    "sub-agents/20-complete-agent-spec.md",
+    ".opencode/skills/go-best-practices/SKILL.md",
+    ".opencode/skills/bubbletea-architecture/SKILL.md",
+    ".opencode/skills/clean-architecture/SKILL.md",
+    ".opencode/skills/mobile-first-termux/SKILL.md"
+  ],
+  "formatter": {
+    "gofumpt": {},
+    "goimports": {}
+  },
+  "lsp": {
+    "gopls": {
+            "command": ["gopls"]
+    }
+  }
+}
+

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Boil Ocean"
+  short_description: "Execute finished work with tests and receipts"
+  default_prompt: "Use $boil-ocean to execute this end-to-end with tests, documentation, commits/PRs when appropriate, and honest receipts."
+policy:
+  allow_implicit_invocation: true
