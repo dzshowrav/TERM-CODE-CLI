@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -39,6 +40,7 @@ type AppModel struct {
 	homeScreen   *screens.HomeScreen
 	chatScreen   *screens.ChatScreen
 	commandInput *components.CommandInput
+	cmdPalette   *components.CommandPalette
 	statusBar    *components.StatusBar
 	working      bool
 	commands     *commandRegistry
@@ -74,6 +76,7 @@ func NewApp() *AppModel {
 		}),
 		chatScreen:   screens.NewChatScreen(),
 		commandInput: components.NewCommandInput(),
+		cmdPalette:   components.NewCommandPalette(),
 		statusBar: components.NewStatusBar(components.StatusBarConfig{
 			ModelName: "none",
 			AgentName: "General",
@@ -217,11 +220,33 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.homeScreen.SetSize(msg.Width, msg.Height)
 		m.chatScreen.SetSize(msg.Width, msg.Height)
 		m.commandInput.SetWidth(msg.Width)
+		m.cmdPalette.SetWidth(msg.Width)
 		m.statusBar.SetWidth(msg.Width)
 
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.cmdPalette.Visible() {
+			switch msg.String() {
+			case "up":
+				m.cmdPalette.SelectUp()
+				return m, nil
+			case "down":
+				m.cmdPalette.SelectDown()
+				return m, nil
+			case "enter", "tab":
+				cmd := m.cmdPalette.SelectedCommand()
+				if cmd != "" {
+					m.commandInput.SetValue(cmd + " ")
+					m.commandInput.SetFocused(true)
+				}
+				m.cmdPalette.Hide()
+				return m, nil
+			case "esc":
+				m.cmdPalette.Hide()
+				return m, nil
+			}
+		}
 		switch msg.String() {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -302,6 +327,23 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	m.commandInput, cmd = m.commandInput.Update(msg)
+
+	val := m.commandInput.Value()
+	if strings.HasPrefix(val, "/") {
+		filter := ""
+		if len(val) > 1 {
+			filter = val[1:]
+		}
+		m.cmdPalette.SetFilter(filter)
+		if !m.cmdPalette.Visible() {
+			m.cmdPalette.Show()
+		}
+	} else {
+		if m.cmdPalette.Visible() {
+			m.cmdPalette.Hide()
+		}
+	}
+
 	return m, cmd
 }
 
@@ -310,7 +352,6 @@ func (m *AppModel) View() tea.View {
 		return tea.NewView("Initializing...")
 	}
 
-	inputView := m.commandInput.View()
 	statusView := m.statusBar.View()
 
 	var mainContent string
@@ -320,7 +361,15 @@ func (m *AppModel) View() tea.View {
 		mainContent = m.chatScreen.View()
 	}
 
-	result := mainContent + "\n" + inputView + "\n" + statusView
+	paletteView := m.cmdPalette.View()
+	inputView := m.commandInput.View()
+
+	var result string
+	if paletteView != "" {
+		result = mainContent + "\n" + paletteView + "\n" + inputView + "\n" + statusView
+	} else {
+		result = mainContent + "\n" + inputView + "\n" + statusView
+	}
 	return tea.NewView(result)
 }
 
