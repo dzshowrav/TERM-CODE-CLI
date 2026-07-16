@@ -6,6 +6,7 @@
 - Lint: `gofumpt -l -w . && goimports -local -w . && go vet ./...`
 - Type check: `go build ./...` (Go compiler enforces types)
 - Format: `gofumpt -l -w .` and `goimports -local -w .`
+- Git Push: **Always run `go build ./... && go vet ./... && go test ./...` before any `git push`. Never push without a clean build first.**
 
 ## Project Structure
 - Go modules with `cmd/`, `internal/`, `pkg/` layout
