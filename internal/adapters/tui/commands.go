@@ -38,6 +38,8 @@ func newCommandRegistry(providerSvc *provider.Service, modelSvc *model.Service, 
 	r.register("session", r.cmdSessions)
 	r.register("clear", r.cmdClear)
 	r.register("git", r.cmdGit)
+	r.register("exit", r.cmdExit)
+	r.register("quit", r.cmdExit)
 	r.register("home", r.cmdHome)
 
 	return r
@@ -91,7 +93,8 @@ func (r *commandRegistry) cmdHelp(ctx context.Context, args []string) string {
   /git commit <msg>   Commit staged changes
   /git branches       List branches
   /clear              Clear session / return home
-  /home               Return to home screen`
+  /home               Return to home screen
+  /exit, /quit        Close TermCode`
 }
 
 func (r *commandRegistry) cmdProvider(ctx context.Context, args []string, providerSvc *provider.Service, modelSvc *model.Service) string {
@@ -479,6 +482,10 @@ func (r *commandRegistry) cmdClear(ctx context.Context, args []string) string {
 		r.app.chatScreen = screens.NewChatScreen()
 	}
 	return "__clear__"
+}
+
+func (r *commandRegistry) cmdExit(ctx context.Context, args []string) string {
+	return "__exit__"
 }
 
 func (r *commandRegistry) cmdHome(ctx context.Context, args []string) string {

@@ -262,6 +262,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			result := m.commands.execute(m.ctx, input)
 
 			switch result {
+			case "__exit__":
+				return m, tea.Quit
 			case "__clear__", "__home__":
 				m.screen = screenHome
 				m.working = false

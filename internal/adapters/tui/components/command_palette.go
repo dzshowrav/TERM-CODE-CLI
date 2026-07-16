@@ -34,6 +34,7 @@ var DefaultCommands = []CommandEntry{
 	{Command: "git branches", Description: "List branches"},
 	{Command: "clear", Description: "Clear session / return home"},
 	{Command: "home", Description: "Return to home screen"},
+	{Command: "exit", Description: "Close TermCode"},
 }
 
 var (
