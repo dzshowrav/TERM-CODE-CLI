@@ -196,6 +196,11 @@ func (m *AppModel) SetProgram(p *tea.Program) {
 	m.program = p
 }
 
+func (m *AppModel) SetWorkspace(path string) {
+	m.workspace = path
+	m.homeScreen.UpdateConfig(screens.HomeScreenConfig{WorkspacePath: path})
+}
+
 func (m *AppModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.commandInput.Init(),
