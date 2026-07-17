@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"termcode/pkg/apitypes"
@@ -19,8 +20,12 @@ type OpenAIAdapter struct {
 }
 
 func NewOpenAIAdapter(baseURL, apiKey string) *OpenAIAdapter {
+	u := strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(u, "/v1") {
+		u = u[:len(u)-3]
+	}
 	return &OpenAIAdapter{
-		baseURL: baseURL,
+		baseURL: u,
 		apiKey:  apiKey,
 		client: &http.Client{
 			Timeout: 60 * time.Second,
@@ -52,7 +57,11 @@ func (a *OpenAIAdapter) Chat(ctx context.Context, req *apitypes.ChatRequest) (*a
 
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(respBody))
+		msg := string(respBody)
+		if isHTML(msg) {
+			msg = "server returned non-JSON response (HTML) — check your provider URL"
+		}
+		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, msg)
 	}
 
 	var chatResp apitypes.ChatResponse
@@ -100,7 +109,11 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *apitypes.ChatReques
 
 		if resp.StatusCode != http.StatusOK {
 			respBody, _ := io.ReadAll(resp.Body)
-			errs <- fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(respBody))
+			msg := string(respBody)
+			if isHTML(msg) {
+				msg = "server returned non-JSON response (HTML) — check your provider URL"
+			}
+			errs <- fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, msg)
 			return
 		}
 
@@ -135,4 +148,9 @@ func (a *OpenAIAdapter) ChatStream(ctx context.Context, req *apitypes.ChatReques
 	}()
 
 	return chunks, errs
+}
+
+func isHTML(s string) bool {
+	lower := strings.ToLower(s)
+	return strings.Contains(lower, "<!doctype") || strings.Contains(lower, "<html")
 }

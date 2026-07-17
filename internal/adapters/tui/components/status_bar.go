@@ -15,6 +15,7 @@ var (
 	versionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 	barEmpty     = lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
 	barFilled    = lipgloss.NewStyle().Foreground(lipgloss.Color("221"))
+	sepStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
 )
 
 type StatusBar struct {
@@ -131,6 +132,7 @@ func (b *StatusBar) idleView() string {
 	model := modelStyle.Render(b.modelName)
 	agent := agentStyle.Render(b.agentName)
 	ver := versionStyle.Render(b.version)
+	sep := sepStyle.Render(" │ ")
 
 	if b.width < 25 {
 		return model
@@ -138,18 +140,18 @@ func (b *StatusBar) idleView() string {
 
 	var branch string
 	if b.branch != "" {
-		branch = branchStyle.Render(b.branch) + " │ "
+		branch = branchStyle.Render(b.branch) + sep
 	}
 
 	if b.width < 40 {
-		return statusStyle.Render(branch + model + " │ " + agent)
+		return statusStyle.Render(branch + model + sep + agent)
 	}
 
 	if b.width < 60 {
-		return statusStyle.Render(branch + model + " │ " + agent)
+		return statusStyle.Render(branch + model + sep + agent)
 	}
 
-	return statusStyle.Render(branch + model + " │ " + agent + " │ " + ver)
+	return statusStyle.Render(branch + model + sep + agent + sep + ver)
 }
 
 func (b *StatusBar) workingView() string {
@@ -157,23 +159,24 @@ func (b *StatusBar) workingView() string {
 	model := modelStyle.Render(b.modelName)
 	agent := agentStyle.Render(b.agentName)
 	ver := versionStyle.Render(b.version)
+	sep := sepStyle.Render(" │ ")
 
 	if b.width < 25 {
-		return bar + " " + model
+		return bar + sep + model
 	}
 
 	var branch string
 	if b.branch != "" {
-		branch = branchStyle.Render(b.branch) + " │ "
+		branch = branchStyle.Render(b.branch) + sep
 	}
 
 	if b.width < 40 {
-		return bar + " " + branch + model + " │ " + agent
+		return bar + sep + branch + model + sep + agent
 	}
 
 	if b.width < 60 {
-		return bar + " " + branch + model + " │ " + agent
+		return bar + sep + branch + model + sep + agent
 	}
 
-	return bar + " " + branch + model + " │ " + agent + " │ " + ver
+	return bar + sep + branch + model + sep + agent + sep + ver
 }

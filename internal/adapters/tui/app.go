@@ -13,6 +13,7 @@ import (
 	"termcode/internal/application/conversation"
 	modelapp "termcode/internal/application/model"
 	"termcode/internal/application/provider"
+	approuter "termcode/internal/application/router"
 	"termcode/internal/domain/session"
 	sqliterepo "termcode/internal/infrastructure/database/sqlite"
 	git "termcode/internal/infrastructure/git"
@@ -28,8 +29,10 @@ const (
 type streamContentMsg string
 
 type streamDoneMsg struct {
-	content string
-	err     error
+	content      string
+	inputTokens  int
+	outputTokens int
+	err          error
 }
 
 type AppModel struct {
@@ -60,6 +63,7 @@ type AppModel struct {
 	messageRepo  *sqliterepo.MessageRepo
 	currentSess  *session.Session
 	gitBranch    string
+	activeDialog screens.DialogScreen
 }
 
 func NewApp() *AppModel {
@@ -96,7 +100,8 @@ func (m *AppModel) SetProviderService(svc *provider.Service, modelRepo *sqlitere
 	m.messageRepo = messageRepo
 	m.modelSvc = modelapp.NewService(modelRepo)
 	m.commands = newCommandRegistry(svc, m.modelSvc, m)
-	m.chatSvc = conversation.NewService(svc)
+	runtimeRouter := approuter.NewRuntimeRouter(svc, m.modelSvc)
+	m.chatSvc = conversation.NewService(runtimeRouter)
 
 	p, err := svc.GetDefault(m.ctx)
 	if err == nil && p != nil {
@@ -199,9 +204,65 @@ func (m *AppModel) SetProgram(p *tea.Program) {
 	m.program = p
 }
 
+func (m *AppModel) ShowDialog(d screens.DialogScreen) {
+	d.SetSize(m.width, m.height)
+	m.activeDialog = d
+	m.layout()
+}
+
 func (m *AppModel) SetWorkspace(path string) {
 	m.workspace = path
 	m.homeScreen.UpdateConfig(screens.HomeScreenConfig{WorkspacePath: path})
+}
+
+// layout is the single source of truth for all component sizing.
+// model(1) + sep(1) + input top(1) + input content(1) + input bottom(1) + status(1) + safe(1) + palette(h) = 7 + paletteHeight
+func (m *AppModel) layout() {
+	if m.width == 0 || m.height == 0 {
+		return
+	}
+
+	// Palette max items based on available space
+	maxPalette := m.height - 8
+	if maxPalette < 3 {
+		maxPalette = 3
+	}
+	maxItems := maxPalette - 3
+	if maxItems < 1 {
+		maxItems = 1
+	}
+	if maxItems > 6 {
+		maxItems = 6
+	}
+	m.cmdPalette.SetMaxItems(maxItems)
+
+	paletteH := m.cmdPalette.Height()
+
+	// Chat screen viewport: remaining after fixed + palette overhead
+	// AppModel.View() = vpH + paletteH + input(3) + status(1) + safe(1) = vpH + paletteH + 5
+	overheadVp := 5 + paletteH
+	vpW := m.width - 4
+	if vpW < 10 {
+		vpW = 10
+	}
+	vpH := m.height - overheadVp
+	if vpH < 1 {
+		vpH = 1
+	}
+	m.chatScreen.SetViewportSize(vpW, vpH)
+
+	// Home screen: content fills avilable space
+	// View() = mainContent (homeH-4 lines) + palette (paletteH) + input (3) + status (1) = homeH + paletteH
+	// homeH + paletteH = m.height  =>  homeH = m.height - paletteH
+	homeH := m.height - paletteH
+	if homeH < 8 {
+		homeH = 8
+	}
+	m.homeScreen.SetSize(m.width, homeH)
+
+	m.commandInput.SetWidth(m.width)
+	m.cmdPalette.SetWidth(m.width)
+	m.statusBar.SetWidth(m.width)
 }
 
 func (m *AppModel) Init() tea.Cmd {
@@ -211,6 +272,27 @@ func (m *AppModel) Init() tea.Cmd {
 }
 
 func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.activeDialog != nil {
+		d, cmd := m.activeDialog.Update(msg)
+		m.activeDialog = d
+		if cmd != nil {
+			return m, cmd
+		}
+		if m.activeDialog.Done() {
+			result := m.activeDialog.Result()
+			m.activeDialog = nil
+			if result != "" && !strings.HasPrefix(result, "__") {
+				if m.screen == screenHome {
+					m.screen = screenChat
+				}
+				m.chatScreen.AddMessage("system", result)
+				m.saveMessage(session.RoleSystem, result)
+			}
+			m.layout()
+		}
+		return m, nil
+	}
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -218,10 +300,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.ready = true
 
 		m.homeScreen.SetSize(msg.Width, msg.Height)
-		m.chatScreen.SetSize(msg.Width, msg.Height)
-		m.commandInput.SetWidth(msg.Width)
-		m.cmdPalette.SetWidth(msg.Width)
-		m.statusBar.SetWidth(msg.Width)
+		m.layout()
 
 		return m, nil
 
@@ -230,9 +309,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "up":
 				m.cmdPalette.SelectUp()
+				m.layout()
 				return m, nil
 			case "down":
 				m.cmdPalette.SelectDown()
+				m.layout()
 				return m, nil
 			case "enter", "tab":
 				cmd := m.cmdPalette.SelectedCommand()
@@ -241,9 +322,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.commandInput.SetFocused(true)
 				}
 				m.cmdPalette.Hide()
+				m.layout()
 				return m, nil
 			case "esc":
 				m.cmdPalette.Hide()
+				m.layout()
 				return m, nil
 			}
 		}
@@ -268,6 +351,8 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.screen = screenHome
 				m.working = false
 				m.statusBar.SetWorking(false)
+			case "__dialog__":
+				return m, nil
 			default:
 				if m.screen == screenHome {
 					m.screen = screenChat
@@ -280,6 +365,7 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if m.screen == screenHome {
 			m.screen = screenChat
+			m.layout()
 		}
 
 		m.ensureSession()
@@ -294,14 +380,46 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		copy(historyCopy, m.history)
 		prog := m.program
 
+		m.chatScreen.ClearToolCards()
+		m.chatScreen.ShowThinking()
+
 		go func() {
-			content, err := m.chatSvc.SendMessage(m.ctx, input, historyCopy, func(chunk string, done bool) {
+			onToolEvent := func(ev conversation.ToolEvent) {
+				if prog == nil {
+					return
+				}
+				switch ev.Type {
+				case conversation.ToolQueued:
+					prog.Send(screens.ToolQueuedMsg{Index: ev.Index, Name: ev.Name, Args: ev.Args})
+				case conversation.ToolInitializing:
+					prog.Send(screens.ToolInitializingMsg{Index: ev.Index, Name: ev.Name})
+				case conversation.ToolConnecting:
+					prog.Send(screens.ToolConnectingMsg{Index: ev.Index, Name: ev.Name})
+				case conversation.ToolStarted:
+					prog.Send(screens.ToolStartedMsg{Index: ev.Index, Name: ev.Name})
+				case conversation.ToolOutput:
+					prog.Send(screens.ToolOutputMsg{Index: ev.Index, Name: ev.Name, Output: ev.Output})
+				case conversation.ToolCompleted:
+					prog.Send(screens.ToolCompletedMsg{Index: ev.Index, Name: ev.Name, Output: ev.Output, Status: ev.Status, Error: ev.Error, Duration: ev.Duration})
+				}
+			}
+
+			result, err := m.chatSvc.SendMessage(m.ctx, input, historyCopy, func(chunk string, done bool) {
 				if prog != nil {
 					prog.Send(streamContentMsg(chunk))
 				}
-			})
+			}, onToolEvent)
 			if prog != nil {
-				prog.Send(streamDoneMsg{content: content, err: err})
+				tokIn, tokOut := 0, 0
+				if result != nil {
+					tokIn = result.InputTokens
+					tokOut = result.OutputTokens
+				}
+				content := ""
+				if result != nil {
+					content = result.Content
+				}
+				prog.Send(streamDoneMsg{content: content, inputTokens: tokIn, outputTokens: tokOut, err: err})
 			}
 		}()
 
@@ -314,12 +432,17 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamDoneMsg:
 		m.working = false
 		m.statusBar.SetWorking(false)
+		m.chatScreen.HideThinking()
 		if msg.err != nil {
+			m.chatScreen.ClearToolCards()
 			m.chatScreen.AddMessage("system", "Error: "+msg.err.Error())
 			m.saveMessage(session.RoleSystem, "Error: "+msg.err.Error())
 		} else {
-			m.chatScreen.AddMessage("assistant", msg.content)
-			m.saveMessage(session.RoleAssistant, msg.content)
+			m.chatScreen.SetToolMetrics(m.chatScreen.ToolCount(), m.chatScreen.TotalDuration(), msg.inputTokens, msg.outputTokens)
+			if msg.content != "" {
+				m.chatScreen.AddMessage("assistant", msg.content)
+				m.saveMessage(session.RoleAssistant, msg.content)
+			}
 		}
 		return m, nil
 
@@ -327,8 +450,13 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.statusBar.Update(msg)
 	}
 
+	chatCmd := m.chatScreen.Update(msg)
+
 	var cmd tea.Cmd
 	m.commandInput, cmd = m.commandInput.Update(msg)
+	if chatCmd != nil {
+		cmd = tea.Batch(chatCmd, cmd)
+	}
 
 	val := m.commandInput.Value()
 	if strings.HasPrefix(val, "/") {
@@ -340,9 +468,11 @@ func (m *AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.cmdPalette.Visible() {
 			m.cmdPalette.Show()
 		}
+		m.layout()
 	} else {
 		if m.cmdPalette.Visible() {
 			m.cmdPalette.Hide()
+			m.layout()
 		}
 	}
 
@@ -357,7 +487,14 @@ func (m *AppModel) View() tea.View {
 	statusView := m.statusBar.View()
 
 	var mainContent string
-	if m.screen == screenHome {
+	if m.activeDialog != nil {
+		mainContent = m.activeDialog.View()
+		dialogLines := strings.Count(mainContent, "\n") + 1
+		overhead := 3
+		if topPad := (m.height - dialogLines - overhead) / 2; topPad > 0 {
+			mainContent = strings.Repeat("\n", topPad) + mainContent
+		}
+	} else if m.screen == screenHome {
 		mainContent = m.homeScreen.View()
 	} else {
 		mainContent = m.chatScreen.View()
@@ -365,6 +502,10 @@ func (m *AppModel) View() tea.View {
 
 	paletteView := m.cmdPalette.View()
 	inputView := m.commandInput.View()
+	if m.activeDialog != nil {
+		paletteView = ""
+		inputView = ""
+	}
 
 	var result string
 	if paletteView != "" {
@@ -372,7 +513,10 @@ func (m *AppModel) View() tea.View {
 	} else {
 		result = mainContent + "\n" + inputView + "\n" + statusView
 	}
-	return tea.NewView(result)
+	v := tea.NewView(result)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeAllMotion
+	return v
 }
 
 func (m *AppModel) detectGitBranch() {

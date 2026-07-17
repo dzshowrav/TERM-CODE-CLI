@@ -2,6 +2,9 @@ package screens
 
 import (
 	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
 )
@@ -60,51 +63,57 @@ func (s *HomeScreen) UpdateConfig(cfg HomeScreenConfig) {
 }
 
 func (s *HomeScreen) View() string {
-	title := styles.TitleStyle.Render("TERM CODE CLI")
-	tagline := styles.Subtitle.Render("Universal Coding Agent")
-
-	providerLabel := styles.LabelStyle.Render("Provider : ")
-	providerVal := styles.ValueStyle.Render(fmt.Sprintf("%s (%s)", s.providerName, s.providerURL))
-
-	modelLabel := styles.LabelStyle.Render("Model    : ")
-	modelVal := styles.ValueStyle.Render(s.modelName)
-
-	agentLabel := styles.LabelStyle.Render("Agent    : ")
-	agentVal := styles.ValueStyle.Render(s.agentName)
-
-	wsLabel := styles.LabelStyle.Render("Workspace: ")
-	wsVal := styles.ValueStyle.Render(s.workspacePath)
-
-	hint := styles.HintStyle.Render("Type a message or / for commands")
-
-	contentLines := 8
-	availableLines := s.height - contentLines
-	if availableLines < 1 {
-		availableLines = 1
-	}
-	spacing := ""
-	for i := 0; i < availableLines/2; i++ {
-		spacing += "\n"
+	availH := s.height - 4
+	if availH < 3 {
+		return ""
 	}
 
-	separator := styles.Separator.Render("─")
+	// Full terminal width — title/hint centered, Content handles indent padding
+	cw := s.width
 
-	content := fmt.Sprintf(
-		"%s\n%s\n%s\n%s%s\n%s%s\n%s%s\n%s%s\n%s\n%s%s",
-		title,
-		tagline,
-		separator,
-		providerLabel, providerVal,
-		modelLabel, modelVal,
-		agentLabel, agentVal,
-		wsLabel, wsVal,
-		separator,
-		spacing,
-		hint,
+	title := styles.TitleStyle.Width(cw).Align(lipgloss.Center).Render("TERM CODE CLI")
+	tagline := styles.Subtitle.Width(cw).Align(lipgloss.Center).Render("Universal Coding Agent")
+
+	line1 := styles.Content(cw, "Provider : "+
+		styles.ValueStyle.Render(fmt.Sprintf("%s (%s)", s.providerName, s.providerURL)))
+
+	line2 := styles.Content(cw, "Model    : "+
+		styles.ValueStyle.Render(s.modelName))
+
+	line3 := styles.Content(cw, "Agent    : "+
+		styles.ValueStyle.Render(s.agentName))
+
+	line4 := styles.Content(cw, "Workspace: "+
+		styles.ValueStyle.Render(s.workspacePath))
+
+	sep := styles.SeparatorLine(cw)
+	hint := styles.HintStyle.Width(cw).Align(lipgloss.Center).Render("Press / for commands")
+
+	body := fmt.Sprintf(
+		"%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n\n%s",
+		title, tagline, sep,
+		line1, line2, line3, line4,
+		sep, hint,
 	)
 
-	return styles.Screen.Copy().
-		Width(s.width).
-		Height(s.height).
-		Render(content)
+	lines := strings.Split(body, "\n")
+	padding := availH - len(lines)
+	if padding > 0 {
+		tp := padding / 2
+		bp := padding - tp
+		p := make([]string, 0, availH)
+		for i := 0; i < tp; i++ {
+			p = append(p, "")
+		}
+		p = append(p, lines...)
+		for i := 0; i < bp; i++ {
+			p = append(p, "")
+		}
+		lines = p
+	}
+	if len(lines) > availH {
+		lines = lines[:availH]
+	}
+
+	return strings.Join(lines, "\n")
 }

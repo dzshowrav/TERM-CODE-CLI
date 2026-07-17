@@ -18,8 +18,9 @@ var DefaultCommands = []CommandEntry{
 	{Command: "provider add", Description: "Add a new provider"},
 	{Command: "provider select", Description: "Select active provider"},
 	{Command: "provider sync", Description: "Sync models from provider"},
-	{Command: "model list", Description: "List available models"},
+	{Command: "models", Description: "List available models"},
 	{Command: "model select", Description: "Select active model"},
+	{Command: "addmodel", Description: "Add a custom model"},
 	{Command: "agent list", Description: "List available agents"},
 	{Command: "agent select", Description: "Select active agent"},
 	{Command: "workspace", Description: "Show/set workspace path"},
@@ -69,6 +70,13 @@ func NewCommandPalette() *CommandPalette {
 
 func (p *CommandPalette) SetWidth(w int) {
 	p.width = w
+}
+
+func (p *CommandPalette) SetMaxItems(n int) {
+	p.maxItems = n
+	if p.maxItems < 1 {
+		p.maxItems = 1
+	}
 }
 
 func (p *CommandPalette) Visible() bool {
@@ -155,6 +163,29 @@ func (p *CommandPalette) Count() int {
 
 func (p *CommandPalette) FilteredCount() int {
 	return len(p.filtered)
+}
+
+func (p *CommandPalette) Height() int {
+	if !p.visible {
+		return 0
+	}
+	if len(p.filtered) == 0 {
+		return 3 // border top + message + border bottom
+	}
+	h := 2 // borders
+	start := p.scroll
+	end := start + p.maxItems
+	if end > len(p.filtered) {
+		end = len(p.filtered)
+	}
+	h += end - start
+	if start > 0 {
+		h++
+	}
+	if end < len(p.filtered) {
+		h++
+	}
+	return h
 }
 
 func (p *CommandPalette) View() string {

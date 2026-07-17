@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -30,6 +31,8 @@ type ProviderListScreen struct {
 	width     int
 	height    int
 	providers []ProviderItem
+	done      bool
+	scroll    int
 }
 
 func NewProviderListScreen() *ProviderListScreen {
@@ -44,6 +47,28 @@ func (s *ProviderListScreen) SetSize(w, h int) {
 	s.height = h
 }
 
+func (s *ProviderListScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			s.done = true
+		case "up":
+			if s.scroll > 0 {
+				s.scroll--
+			}
+		case "down":
+			if s.scroll < len(s.providers)-1 {
+				s.scroll++
+			}
+		}
+	}
+	return s, nil
+}
+
+func (s *ProviderListScreen) Done() bool     { return s.done }
+func (s *ProviderListScreen) Result() string { return "" }
+
 func (s *ProviderListScreen) SetProviders(providers []ProviderItem) {
 	s.providers = providers
 }
@@ -55,7 +80,7 @@ func (s *ProviderListScreen) View() string {
 	if len(s.providers) == 0 {
 		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No providers configured.")
 		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use /provider add to add one.")
-		return fmt.Sprintf("%s\n%s\n%s\n%s", header, sep, empty, hint)
+		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s\n%s", header, sep, empty, hint))
 	}
 
 	var lines []string
@@ -83,5 +108,5 @@ func (s *ProviderListScreen) View() string {
 		lines = append(lines, "")
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }

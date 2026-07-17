@@ -2,12 +2,7 @@ package components
 
 import (
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
-
-var viewportStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color("250"))
 
 type Viewport struct {
 	content  []string
@@ -66,11 +61,31 @@ func (v *Viewport) SetWidth(w int) {
 
 func (v *Viewport) SetHeight(h int) {
 	v.height = h
+	if v.maxLines > 0 && v.offset+v.height > v.maxLines {
+		v.offset = v.maxLines - v.height
+	}
+	if v.offset < 0 {
+		v.offset = 0
+	}
 }
 
 func (v *Viewport) SetSize(w, h int) {
 	v.width = w
 	v.height = h
+	if v.maxLines > 0 && v.offset+v.height > v.maxLines {
+		v.offset = v.maxLines - v.height
+	}
+	if v.offset < 0 {
+		v.offset = 0
+	}
+}
+
+func (v *Viewport) GotoBottom() {
+	if v.maxLines > v.height {
+		v.offset = v.maxLines - v.height
+	} else {
+		v.offset = 0
+	}
 }
 
 func (v *Viewport) AddLine(line string) {
@@ -98,6 +113,10 @@ func (v *Viewport) ScrollDown(n int) {
 	}
 }
 
+func (v *Viewport) Height() int {
+	return v.height
+}
+
 func (v *Viewport) AtTop() bool {
 	return v.offset <= 0
 }
@@ -111,7 +130,7 @@ func (v *Viewport) Update(msg any) {
 
 func (v *Viewport) View() string {
 	if len(v.content) == 0 {
-		return ""
+		return strings.Repeat("\n", v.height-1)
 	}
 
 	end := v.offset + v.height
@@ -120,5 +139,9 @@ func (v *Viewport) View() string {
 	}
 
 	visible := v.content[v.offset:end]
-	return viewportStyle.Render(strings.Join(visible, "\n"))
+	result := strings.Join(visible, "\n")
+	if pad := v.height - len(visible); pad > 0 {
+		result += strings.Repeat("\n", pad)
+	}
+	return result
 }

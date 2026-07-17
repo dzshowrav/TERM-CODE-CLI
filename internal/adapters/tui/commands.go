@@ -8,6 +8,7 @@ import (
 	"termcode/internal/adapters/tui/screens"
 	"termcode/internal/application/model"
 	"termcode/internal/application/provider"
+	domainmodel "termcode/internal/domain/model"
 	git "termcode/internal/infrastructure/git"
 )
 
@@ -31,6 +32,12 @@ func newCommandRegistry(providerSvc *provider.Service, modelSvc *model.Service, 
 	})
 	r.register("model", func(ctx context.Context, args []string) string {
 		return r.cmdModel(ctx, args, providerSvc, modelSvc)
+	})
+	r.register("models", func(ctx context.Context, args []string) string {
+		return r.cmdModels(ctx, args, providerSvc, modelSvc)
+	})
+	r.register("addmodel", func(ctx context.Context, args []string) string {
+		return r.cmdAddModel(ctx, args, providerSvc, modelSvc)
 	})
 	r.register("agent", r.cmdAgent)
 	r.register("workspace", r.cmdWorkspace)
@@ -72,29 +79,8 @@ func (r *commandRegistry) execute(ctx context.Context, input string) string {
 }
 
 func (r *commandRegistry) cmdHelp(ctx context.Context, args []string) string {
-	return `Commands:
-  /help, /h           Show this help
-  /provider list      List providers
-  /provider add       Add a provider
-  /provider select    Select active provider
-  /provider sync      Sync models from provider
-  /model list         List models
-  /model select       Select active model
-  /agent list         List agents
-  /agent select       Select active agent
-  /workspace <path>   Set workspace path
-  /sessions list      List saved sessions
-  /sessions new       Start a new session
-  /sessions delete    Delete a session
-  /git status         Show git status
-  /git log [n]        Show commit log (last n commits)
-  /git diff           Show working tree changes
-  /git add [files]    Stage files
-  /git commit <msg>   Commit staged changes
-  /git branches       List branches
-  /clear              Clear session / return home
-  /home               Return to home screen
-  /exit, /quit        Close TermCode`
+	r.app.ShowDialog(screens.NewHelpScreen())
+	return "__dialog__"
 }
 
 func (r *commandRegistry) cmdProvider(ctx context.Context, args []string, providerSvc *provider.Service, modelSvc *model.Service) string {
@@ -108,34 +94,67 @@ func (r *commandRegistry) cmdProvider(ctx context.Context, args []string, provid
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err)
 		}
-		if len(providers) == 0 {
-			return "No providers configured. Use /provider add to add one."
-		}
-		var result []string
+		items := make([]screens.ProviderItem, 0, len(providers))
+		defID := ""
 		for _, p := range providers {
-			def := ""
 			if p.IsDefault {
-				def = " (active)"
+				defID = p.ID
 			}
-			result = append(result, fmt.Sprintf("  %s - %s%s", p.Name, p.BaseURL, def))
 		}
-		return "Providers:\n" + strings.Join(result, "\n")
+		for _, p := range providers {
+			status := "disconnected"
+			items = append(items, screens.ProviderItem{
+				Name:     p.Name,
+				URL:      p.BaseURL,
+				Status:   status,
+				Latency:  0,
+				IsActive: p.ID == defID,
+			})
+		}
+		s := screens.NewProviderListScreen()
+		s.SetProviders(items)
+		r.app.ShowDialog(s)
+		return "__dialog__"
 
 	case "add":
-		if len(args) < 3 {
-			return "Usage: /provider add <name> <base_url> [api_key]"
+		if len(args) >= 3 {
+			name := args[1]
+			baseURL := args[2]
+			apiKey := ""
+			if len(args) > 3 {
+				apiKey = args[3]
+			}
+			p, err := providerSvc.Create(ctx, name, baseURL, apiKey, "")
+			if err != nil {
+				return fmt.Sprintf("Error: %v", err)
+			}
+			return fmt.Sprintf("Provider '%s' added (ID: %s)", p.Name, p.ID)
 		}
-		name := args[1]
-		baseURL := args[2]
-		apiKey := ""
-		if len(args) > 3 {
-			apiKey = args[3]
-		}
-		p, err := providerSvc.Create(ctx, name, baseURL, apiKey, "")
-		if err != nil {
-			return fmt.Sprintf("Error: %v", err)
-		}
-		return fmt.Sprintf("Provider '%s' added (ID: %s)", p.Name, p.ID)
+		s := screens.NewProviderAddScreen(
+			func(name, baseURL, apiKey, desc string) string {
+				p, err := providerSvc.Create(ctx, name, baseURL, apiKey, desc)
+				if err != nil {
+					return fmt.Sprintf("Error: %v", err)
+				}
+				return fmt.Sprintf("Provider '%s' added (ID: %s)", p.Name, p.ID)
+			},
+			func(name, baseURL, apiKey, desc string) string {
+				p, err := providerSvc.Create(ctx, name, baseURL, apiKey, desc)
+				if err != nil {
+					return fmt.Sprintf("Error: %v", err)
+				}
+				result, err := providerSvc.TestConnection(ctx, p.ID)
+				if err != nil {
+					return fmt.Sprintf("Test error: %v", err)
+				}
+				if result.Success {
+					return fmt.Sprintf("OK (%dms, %d models)", result.Latency, result.Models)
+				}
+				return fmt.Sprintf("Failed: %s", result.Message)
+			},
+		)
+		r.app.ShowDialog(s)
+		return "__dialog__"
 
 	case "select":
 		if len(args) < 2 {
@@ -197,48 +216,55 @@ func (r *commandRegistry) cmdProvider(ctx context.Context, args []string, provid
 
 func (r *commandRegistry) cmdModel(ctx context.Context, args []string, providerSvc *provider.Service, modelSvc *model.Service) string {
 	if len(args) == 0 {
-		return "Usage: /model list|select"
+		return "Usage: /model list"
 	}
 
 	switch args[0] {
 	case "list":
-		models, err := modelSvc.List(ctx)
-		if err != nil {
-			return fmt.Sprintf("Error: %v", err)
-		}
-		if len(models) == 0 {
-			return "No models configured. Use /provider sync to load models."
-		}
-		var result []string
-		for _, m := range models {
-			fav := ""
-			if m.IsFavorite {
-				fav = " *"
-			}
-			result = append(result, fmt.Sprintf("  %s - %s (%s)%s", m.DisplayName, string(m.Category), m.ModelID, fav))
-		}
-		return "Models:\n" + strings.Join(result, "\n")
-
-	case "select":
-		if len(args) < 2 {
-			return "Usage: /model select <model_id>"
-		}
-		models, err := modelSvc.List(ctx)
-		if err != nil {
-			return fmt.Sprintf("Error: %v", err)
-		}
-		q := args[1]
-		for _, m := range models {
-			if strings.EqualFold(m.ModelID, q) || strings.EqualFold(m.DisplayName, q) {
-				r.app.SetSelectedModel(m.ModelID)
-				return fmt.Sprintf("Model '%s' selected.", m.DisplayName)
-			}
-		}
-		return fmt.Sprintf("Model '%s' not found. Use /model list to see available models.", q)
+		return r.showModelSelectDialog(ctx, modelSvc)
 
 	default:
-		return "Usage: /model list|select"
+		return "Usage: /model list"
 	}
+}
+
+func (r *commandRegistry) cmdModels(ctx context.Context, args []string, providerSvc *provider.Service, modelSvc *model.Service) string {
+	return r.showModelSelectDialog(ctx, modelSvc)
+}
+
+func (r *commandRegistry) showModelSelectDialog(ctx context.Context, modelSvc *model.Service) string {
+	pmodel, err := modelSvc.List(ctx)
+	if err != nil {
+		return fmt.Sprintf("Error: %v", err)
+	}
+	models := make([]domainmodel.Model, len(pmodel))
+	for i, m := range pmodel {
+		models[i] = *m
+	}
+	s := screens.NewModelSelectScreen(func(modelID string) string {
+		r.app.SetSelectedModel(modelID)
+		return fmt.Sprintf("Model '%s' selected.", modelID)
+	})
+	s.SetModels(models)
+	r.app.ShowDialog(s)
+	return "__dialog__"
+}
+
+func (r *commandRegistry) cmdAddModel(ctx context.Context, args []string, providerSvc *provider.Service, modelSvc *model.Service) string {
+	s := screens.NewModelAddScreen(func(id, display, provider string, ctxSize, maxOut int) string {
+		m := &domainmodel.Model{
+			ModelID:     id,
+			DisplayName: display,
+			MaxContext:  ctxSize,
+			MaxOutput:   maxOut,
+		}
+		if err := modelSvc.Create(ctx, m); err != nil {
+			return fmt.Sprintf("Error: %v", err)
+		}
+		return fmt.Sprintf("Model '%s' added.", display)
+	})
+	r.app.ShowDialog(s)
+	return "__dialog__"
 }
 
 func (r *commandRegistry) cmdAgent(ctx context.Context, args []string) string {
@@ -293,18 +319,19 @@ func (r *commandRegistry) cmdSessions(ctx context.Context, args []string) string
 		if err != nil {
 			return fmt.Sprintf("Error: %v", err)
 		}
-		if len(sessions) == 0 {
-			return "No saved sessions."
-		}
-		var result []string
+		items := make([]screens.SessionListItem, 0, len(sessions))
 		for _, s := range sessions {
-			msg := fmt.Sprintf("  %s (%d msgs)", s.Name, s.MessageCnt)
-			if r.app.currentSess != nil && s.ID == r.app.currentSess.ID {
-				msg += " [active]"
-			}
-			result = append(result, msg)
+			items = append(items, screens.SessionListItem{
+				ID:       s.ID,
+				Name:     s.Name,
+				MsgCount: s.MessageCnt,
+				IsActive: r.app.currentSess != nil && s.ID == r.app.currentSess.ID,
+			})
 		}
-		return "Sessions:\n" + strings.Join(result, "\n")
+		s := screens.NewSessionScreen()
+		s.SetSessions(items)
+		r.app.ShowDialog(s)
+		return "__dialog__"
 
 	case "new":
 		r.app.history = nil

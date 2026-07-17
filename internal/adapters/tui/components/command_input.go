@@ -11,10 +11,7 @@ import (
 var (
 	inputPrompt = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("> ")
 	inputStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
-	borderStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderTop(true).
-			BorderForeground(lipgloss.Color("240"))
+	inputWrap   = lipgloss.NewStyle().BorderStyle(lipgloss.NormalBorder()).BorderTop(true).BorderBottom(true).BorderForeground(lipgloss.Color("236"))
 )
 
 type SubmitMsg string
@@ -61,6 +58,10 @@ func (c *CommandInput) Init() tea.Cmd {
 
 func (c *CommandInput) Update(msg tea.Msg) (*CommandInput, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		c.value = c.value[:c.cursor] + msg.String() + c.value[c.cursor:]
+		c.cursor += len(msg.String())
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -118,8 +119,13 @@ func (c *CommandInput) Update(msg tea.Msg) (*CommandInput, tea.Cmd) {
 			c.value = c.value[:c.cursor]
 
 		default:
-			if len(msg.String()) == 1 && msg.String()[0] >= 32 {
-				r := msg.String()
+			var r string
+			if msg.String() == "space" {
+				r = " "
+			} else if len(msg.String()) == 1 && msg.String()[0] >= 32 {
+				r = msg.String()
+			}
+			if r != "" {
 				c.value = c.value[:c.cursor] + r + c.value[c.cursor:]
 				c.cursor++
 			}
@@ -135,6 +141,7 @@ func (c *CommandInput) View() string {
 	}
 
 	display := c.value
+	var content string
 	if display == "" {
 		display = "Type a message or / for commands..."
 		runes := []rune(display)
@@ -142,27 +149,26 @@ func (c *CommandInput) View() string {
 		if len(runes) > maxLen {
 			runes = runes[:maxLen]
 		}
-		return inputStyle.Render(inputPrompt + string(runes))
+		content = inputPrompt + string(runes)
+	} else {
+		runes := []rune(display)
+		maxLen := c.width - 4
+		if len(runes) > maxLen {
+			runes = runes[len(runes)-maxLen:]
+		}
+		disp := string(runes)
+
+		cursorRunes := []rune(disp)
+		cursorPos := utf8.RuneCountInString(disp[:min(c.cursor, len(disp))])
+
+		cursor := "█"
+
+		before := string(cursorRunes[:cursorPos])
+		after := string(cursorRunes[cursorPos:])
+		content = inputPrompt + before + cursor + after
 	}
 
-	runes := []rune(display)
-	maxLen := c.width - 4
-	if len(runes) > maxLen {
-		runes = runes[len(runes)-maxLen:]
-	}
-	disp := string(runes)
-
-	cursorRunes := []rune(disp)
-	cursorPos := utf8.RuneCountInString(disp[:min(c.cursor, len(disp))])
-
-	cursor := ""
-	if c.focused {
-		cursor = "█"
-	}
-
-	before := string(cursorRunes[:cursorPos])
-	after := string(cursorRunes[cursorPos:])
-	return inputStyle.Render(inputPrompt + before + cursor + after)
+	return inputWrap.Copy().Width(c.width).Render(inputStyle.Render(content))
 }
 
 func min(a, b int) int {

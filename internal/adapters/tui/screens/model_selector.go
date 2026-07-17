@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -33,12 +34,16 @@ type ModelSelector struct {
 	items    []ModelSelectorItem
 	search   string
 	selected int
+	done     bool
+	result   string
+	onSelect func(item ModelSelectorItem) string
 }
 
-func NewModelSelector() *ModelSelector {
+func NewModelSelector(onSelect func(item ModelSelectorItem) string) *ModelSelector {
 	return &ModelSelector{
-		width:  80,
-		height: 20,
+		width:    80,
+		height:   20,
+		onSelect: onSelect,
 	}
 }
 
@@ -46,6 +51,49 @@ func (s *ModelSelector) SetSize(w, h int) {
 	s.width = w
 	s.height = h
 }
+
+func (s *ModelSelector) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			s.done = true
+		case "enter":
+			items := s.filtered()
+			if len(items) > 0 && s.selected >= 0 && s.selected < len(items) {
+				if s.onSelect != nil {
+					s.result = s.onSelect(items[s.selected])
+				}
+			}
+			s.done = true
+		case "up":
+			items := s.filtered()
+			if s.selected > 0 {
+				s.selected--
+			}
+			_ = items
+		case "down":
+			items := s.filtered()
+			if s.selected < len(items)-1 {
+				s.selected++
+			}
+		case "backspace":
+			if len(s.search) > 0 {
+				s.search = s.search[:len(s.search)-1]
+				s.selected = 0
+			}
+		default:
+			if len(msg.String()) == 1 {
+				s.search += msg.String()
+				s.selected = 0
+			}
+		}
+	}
+	return s, nil
+}
+
+func (s *ModelSelector) Done() bool     { return s.done }
+func (s *ModelSelector) Result() string { return s.result }
 
 func (s *ModelSelector) SetItems(items []ModelSelectorItem) {
 	s.items = items
@@ -115,5 +163,5 @@ func (s *ModelSelector) View() string {
 	}
 
 	content := strings.Join(lines, "\n")
-	return fmt.Sprintf("%s\n%s\n%s", header, search, content)
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, search, content))
 }

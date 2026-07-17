@@ -59,7 +59,7 @@ func (s *ToolExecutionScreen) View() string {
 
 	if len(s.tools) == 0 {
 		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No tools executed.")
-		return fmt.Sprintf("%s\n%s\n%s", header, sep, empty)
+		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, empty))
 	}
 
 	var lines []string
@@ -115,5 +115,5 @@ func (s *ToolExecutionScreen) View() string {
 		lines = append(lines, "")
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }

@@ -44,6 +44,10 @@ func (d *PromptDialog) Init() tea.Cmd {
 
 func (d *PromptDialog) Update(msg tea.Msg) (*PromptDialog, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		d.value = d.value[:d.cursor] + msg.String() + d.value[d.cursor:]
+		d.cursor += len(msg.String())
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -78,8 +82,13 @@ func (d *PromptDialog) Update(msg tea.Msg) (*PromptDialog, tea.Cmd) {
 				d.cursor++
 			}
 		default:
-			if len(msg.String()) == 1 && msg.String()[0] >= 32 {
-				r := msg.String()
+			var r string
+			if msg.String() == "space" {
+				r = " "
+			} else if len(msg.String()) == 1 && msg.String()[0] >= 32 {
+				r = msg.String()
+			}
+			if r != "" {
 				d.value = d.value[:d.cursor] + r + d.value[d.cursor:]
 				d.cursor++
 			}

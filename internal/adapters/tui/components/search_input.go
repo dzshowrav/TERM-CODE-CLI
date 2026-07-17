@@ -48,6 +48,10 @@ func (s *SearchInput) Init() tea.Cmd {
 
 func (s *SearchInput) Update(msg tea.Msg) (*SearchInput, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		s.value = s.value[:s.cursor] + msg.String() + s.value[s.cursor:]
+		s.cursor += len(msg.String())
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "enter":
@@ -74,8 +78,13 @@ func (s *SearchInput) Update(msg tea.Msg) (*SearchInput, tea.Cmd) {
 				s.cursor++
 			}
 		default:
-			if len(msg.String()) == 1 && msg.String()[0] >= 32 {
-				r := msg.String()
+			var r string
+			if msg.String() == "space" {
+				r = " "
+			} else if len(msg.String()) == 1 && msg.String()[0] >= 32 {
+				r = msg.String()
+			}
+			if r != "" {
 				s.value = s.value[:s.cursor] + r + s.value[s.cursor:]
 				s.cursor++
 			}

@@ -42,8 +42,16 @@ type openAIModelsResponse struct {
 	Data   []openAIModel `json:"data"`
 }
 
+func normalizeBaseURL(raw string) string {
+	u := strings.TrimRight(raw, "/")
+	if strings.HasSuffix(u, "/v1") {
+		u = u[:len(u)-3]
+	}
+	return u
+}
+
 func (s *DiscoveryService) DiscoverFromProvider(ctx context.Context, p *provider.Provider, apiKey string) ([]*model.Model, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.BaseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizeBaseURL(p.BaseURL)+"/v1/models", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -60,7 +68,14 @@ func (s *DiscoveryService) DiscoverFromProvider(ctx context.Context, p *provider
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, string(body))
+		msg := strings.TrimSpace(string(body))
+		if len(msg) > 300 {
+			msg = msg[:300] + "..."
+		}
+		if strings.Contains(msg, "<html") || strings.Contains(msg, "<!DOCTYPE") {
+			msg = "server returned non-JSON response (HTML)"
+		}
+		return nil, fmt.Errorf("API error (HTTP %d): %s", resp.StatusCode, msg)
 	}
 
 	var modelsResp openAIModelsResponse

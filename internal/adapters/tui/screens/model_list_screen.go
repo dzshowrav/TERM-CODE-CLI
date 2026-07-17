@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -35,6 +36,8 @@ type ModelListScreen struct {
 	height      int
 	models      []ModelListItem
 	groupByProv bool
+	done        bool
+	scroll      int
 }
 
 func NewModelListScreen() *ModelListScreen {
@@ -49,6 +52,26 @@ func (s *ModelListScreen) SetSize(w, h int) {
 	s.width = w
 	s.height = h
 }
+
+func (s *ModelListScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			s.done = true
+		case "up":
+			if s.scroll > 0 {
+				s.scroll--
+			}
+		case "down":
+			s.scroll++
+		}
+	}
+	return s, nil
+}
+
+func (s *ModelListScreen) Done() bool     { return s.done }
+func (s *ModelListScreen) Result() string { return "" }
 
 func (s *ModelListScreen) SetModels(models []ModelListItem) {
 	s.models = models
@@ -69,7 +92,7 @@ func (s *ModelListScreen) View() string {
 	if len(s.models) == 0 {
 		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No models configured.")
 		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use /provider sync to load models.")
-		return fmt.Sprintf("%s\n%s\n%s\n%s", header, sep, empty, hint)
+		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s\n%s", header, sep, empty, hint))
 	}
 
 	var lines []string
@@ -88,7 +111,7 @@ func (s *ModelListScreen) View() string {
 		}
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }
 
 func (s *ModelListScreen) renderLine(m ModelListItem) string {

@@ -37,9 +37,17 @@ func NewService(repo Repository, logger *slog.Logger) *Service {
 	}
 }
 
+func normalizeBaseURL(raw string) string {
+	u := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if strings.HasSuffix(u, "/v1") {
+		u = u[:len(u)-3]
+	}
+	return u
+}
+
 func (s *Service) Create(ctx context.Context, name, baseURL, apiKey, desc string) (*provider.Provider, error) {
 	name = strings.TrimSpace(name)
-	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	baseURL = normalizeBaseURL(baseURL)
 
 	if name == "" {
 		return nil, fmt.Errorf("name is required")
@@ -83,7 +91,7 @@ func (s *Service) Update(ctx context.Context, id, name, baseURL, apiKey, desc st
 		p.Name = strings.TrimSpace(name)
 	}
 	if baseURL != "" {
-		p.BaseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+		p.BaseURL = normalizeBaseURL(baseURL)
 	}
 	if desc != "" {
 		p.Description = desc
@@ -148,7 +156,7 @@ func (s *Service) TestConnection(ctx context.Context, id string) (*ConnectionTes
 	}
 
 	start := time.Now()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.BaseURL+"/v1/models", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, normalizeBaseURL(p.BaseURL)+"/v1/models", nil)
 	if err != nil {
 		return &ConnectionTestResult{Success: false, Message: "invalid request"}, nil
 	}

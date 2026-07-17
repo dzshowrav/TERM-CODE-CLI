@@ -65,9 +65,9 @@ func (s *SettingsScreen) View() string {
 	}
 
 	if len(lines) == 0 {
-		return fmt.Sprintf("%s\n%s\n%s", header, sep,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No settings available."))
+		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep,
+			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No settings available.")))
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }

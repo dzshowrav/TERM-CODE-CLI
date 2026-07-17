@@ -14,7 +14,15 @@ import (
 )
 
 func main() {
+	logPath := filepath.Join(os.TempDir(), "termcode.log")
+	logFile, err := os.Create(logPath)
+	if err == nil {
+		defer logFile.Close()
+	}
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	if logFile != nil {
+		logger = slog.New(slog.NewTextHandler(logFile, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	}
 
 	db, err := sqliterepo.Open()
 	if err != nil {
@@ -39,7 +47,7 @@ func main() {
 	app.SetWorkspace(resolveWorkspace())
 	app.SetProviderService(providerSvc, modelRepo, sessionRepo, messageRepo)
 
-	program := tea.NewProgram(app)
+	program := tea.NewProgram(app, tea.WithoutSignalHandler(), tea.WithFPS(30))
 	app.SetProgram(program)
 
 	if _, err := program.Run(); err != nil {

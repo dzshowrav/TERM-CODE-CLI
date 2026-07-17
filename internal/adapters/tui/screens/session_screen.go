@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -30,6 +31,8 @@ type SessionScreen struct {
 	width    int
 	height   int
 	sessions []SessionListItem
+	done     bool
+	scroll   int
 }
 
 func NewSessionScreen() *SessionScreen {
@@ -44,6 +47,26 @@ func (s *SessionScreen) SetSize(w, h int) {
 	s.height = h
 }
 
+func (s *SessionScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			s.done = true
+		case "up":
+			if s.scroll > 0 {
+				s.scroll--
+			}
+		case "down":
+			s.scroll++
+		}
+	}
+	return s, nil
+}
+
+func (s *SessionScreen) Done() bool     { return s.done }
+func (s *SessionScreen) Result() string { return "" }
+
 func (s *SessionScreen) SetSessions(sessions []SessionListItem) {
 	s.sessions = sessions
 }
@@ -54,7 +77,7 @@ func (s *SessionScreen) View() string {
 
 	if len(s.sessions) == 0 {
 		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No sessions.")
-		return fmt.Sprintf("%s\n%s\n%s", header, sep, empty)
+		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, empty))
 	}
 
 	var lines []string
@@ -74,5 +97,5 @@ func (s *SessionScreen) View() string {
 		lines = append(lines, "")
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }

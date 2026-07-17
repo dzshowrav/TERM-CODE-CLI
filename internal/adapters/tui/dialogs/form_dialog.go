@@ -60,6 +60,11 @@ func (d *FormDialog) currentField() *FormField {
 
 func (d *FormDialog) Update(msg tea.Msg) (*FormDialog, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.PasteMsg:
+		if f := d.currentField(); f != nil {
+			f.Value += msg.String()
+		}
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "tab", "down":
@@ -90,8 +95,14 @@ func (d *FormDialog) Update(msg tea.Msg) (*FormDialog, tea.Cmd) {
 			}
 		default:
 			if f := d.currentField(); f != nil {
-				if len(msg.String()) == 1 && msg.String()[0] >= 32 {
-					f.Value += msg.String()
+				var ch string
+				if msg.String() == "space" {
+					ch = " "
+				} else if len(msg.String()) == 1 && msg.String()[0] >= 32 {
+					ch = msg.String()
+				}
+				if ch != "" {
+					f.Value += ch
 				}
 			}
 		}

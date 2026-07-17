@@ -46,6 +46,28 @@ func (g *TokenGauge) Percent() float64 {
 	return pct
 }
 
+func (g *TokenGauge) WarningLevel() int {
+	pct := g.Percent()
+	if pct > 0.85 {
+		return 2
+	}
+	if pct > 0.7 {
+		return 1
+	}
+	return 0
+}
+
+func (g *TokenGauge) WarningText() string {
+	switch g.WarningLevel() {
+	case 2:
+		return gaugeFull.Render("⚠ CONTEXT NEARLY FULL")
+	case 1:
+		return gaugeWarn.Render("⚠ Context high")
+	default:
+		return ""
+	}
+}
+
 func (g *TokenGauge) View() string {
 	pct := g.Percent()
 
@@ -61,15 +83,18 @@ func (g *TokenGauge) View() string {
 	empty := gaugeWidth - filled
 
 	fillStyle := gaugeFilled
+	warnText := ""
 	if pct > 0.85 {
 		fillStyle = gaugeFull
+		warnText = " " + gaugeFull.Render("⚠ FULL")
 	} else if pct > 0.7 {
 		fillStyle = gaugeWarn
+		warnText = " " + gaugeWarn.Render("⚠")
 	}
 
 	bar := fillStyle.Render(repeat("■", filled)) + gaugeEmpty.Render(repeat("■", empty))
 
-	return gaugeLabel.Render(fmt.Sprintf("ctx %s %3.0f%%", bar, pct*100))
+	return gaugeLabel.Render(fmt.Sprintf("ctx %s %3.0f%%%s", bar, pct*100, warnText))
 }
 
 func repeat(s string, n int) string {

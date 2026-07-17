@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -18,6 +19,7 @@ var (
 type HelpScreen struct {
 	width  int
 	height int
+	done   bool
 }
 
 func NewHelpScreen() *HelpScreen {
@@ -31,6 +33,19 @@ func (s *HelpScreen) SetSize(w, h int) {
 	s.width = w
 	s.height = h
 }
+
+func (s *HelpScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if msg.String() == "esc" {
+			s.done = true
+		}
+	}
+	return s, nil
+}
+
+func (s *HelpScreen) Done() bool     { return s.done }
+func (s *HelpScreen) Result() string { return "" }
 
 func (s *HelpScreen) View() string {
 	header := styles.H1.Render("Help - Slash Commands")
@@ -98,5 +113,5 @@ func (s *HelpScreen) View() string {
 		lines = append(lines, "")
 	}
 
-	return fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n"))
+	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
 }

@@ -53,3 +53,7 @@ func (s *Service) SyncFromProvider(ctx context.Context, providerID, baseURL, api
 func (s *Service) SetFavorite(ctx context.Context, id string, favorite bool) error {
 	return s.repo.SetFavorite(ctx, id, favorite)
 }
+
+func (s *Service) Create(ctx context.Context, m *model.Model) error {
+	return s.repo.Create(ctx, m)
+}
