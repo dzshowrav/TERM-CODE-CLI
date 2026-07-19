@@ -34,7 +34,7 @@
 
 ## What is TERM CODE?
 
-TERM CODE (short form: `tc`) is a 100% Termux-compatible, mobile-first, mobile-friendly AI coding agent CLI application. It combines the best UX patterns from **opencode CLI** and **antigravity CLI** into a single, unified terminal interface that works entirely on Android Termux.
+TERM CODE (short form: `tc`) is a 100% Termux-compatible, mobile-first, mobile-friendly AI coding agent CLI application. It combines the best UX patterns from **opencode CLI** into a single, unified terminal interface that works entirely on Android Termux.
 
 ## Core Purpose
 

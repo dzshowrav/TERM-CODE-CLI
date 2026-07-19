@@ -16,8 +16,6 @@ type scrollApplyMsg struct{}
 const (
 	scrollDebounceInterval = 50 * time.Millisecond
 	scrollSingleGap        = 200 * time.Millisecond
-	autoCollapseDelay      = 2 * time.Second
-	toolAnimTickInterval   = 150 * time.Millisecond
 )
 
 type ToolQueuedMsg struct {
@@ -56,52 +54,74 @@ type ToolCompletedMsg struct {
 	Duration int64
 }
 
-type AutoCollapseMsg struct {
-	Index int
+type ThinkingTickMsg struct{}
+
+type thoughtEntry struct {
+	text      string
+	dur       time.Duration
+	collapsed bool
 }
 
-type ToolAnimTick struct{}
+type tlType int
+
+const (
+	tlThought tlType = iota
+	tlToolCard
+)
+
+type timelineItem struct {
+	typ        tlType
+	thoughtIdx int
+	cardIdx    int
+}
 
 type ChatScreen struct {
-	width            int
-	height           int
-	viewport         *components.Viewport
-	modelName        string
-	messages         []ChatMessage
-	scrolledAway     bool
-	scrollDelta      int
-	scrollPending    bool
-	lastScrollTime   time.Time
-	toolCards        []*components.ToolCard
-	focusedCard      int
-	animTick         int
-	showThinking     bool
-	thinkingExpanded bool
-	thinkingStart    time.Time
-	thinkingDur      time.Duration
-	toolCount        int
-	searchMode       bool
-	searchQuery      string
-	filterMode       int // 0=all 1=running 2=completed 3=failed
-	totalDuration    int64
-	inputTokens      int
-	outputTokens     int
+	width          int
+	height         int
+	viewport       *components.Viewport
+	modelName      string
+	messages       []ChatMessage
+	scrolledAway   bool
+	scrollDelta    int
+	scrollPending  bool
+	lastScrollTime time.Time
+	toolCards      []*components.ToolCard
+	timeline       []timelineItem
+	focusedCard    int
+	animTick       int
+	showThinking   bool
+	thinkingStart  time.Time
+	thinkingDur    time.Duration
+	toolCount      int
+	totalDuration  int64
+	inputTokens    int
+	outputTokens   int
+	responseText   string
+	thoughts       []thoughtEntry
+	agentName      string
+	streamActive   bool
+	cachedBase     []string
+	mdRenderer     *components.MarkdownRenderer
 }
 
 type ChatMessage struct {
-	Role    string
-	Content string
-	ToolID  string
+	Role      string
+	Content   string
+	Reasoning string
+	ToolID    string
 }
 
 var (
-	userStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("83")).SetString("You")
-	assistantStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).SetString("AI")
-	systemStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).SetString("System")
-	thinkingStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).SetString("Thinking")
-	metricsStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	timelineStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
+	userStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("83")).SetString("You")
+	systemStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).SetString("System")
+	metricsStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 )
+
+func assistantLabel(model, agent string) string {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("\u25cf "+model) +
+		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(" │ ") +
+		lipgloss.NewStyle().Foreground(lipgloss.Color("83")).Render(agent)
+}
 
 func NewChatScreen() *ChatScreen {
 	return &ChatScreen{
@@ -111,76 +131,215 @@ func NewChatScreen() *ChatScreen {
 		modelName:   "none",
 		messages:    []ChatMessage{},
 		focusedCard: -1,
+		mdRenderer:  components.NewMarkdownRenderer(),
 	}
 }
 
 func (s *ChatScreen) SetViewportSize(w, h int) {
 	s.width = w + 4
 	s.viewport.SetSize(w, h)
-	s.viewport.GotoBottom()
+	s.renderMessages()
+	if !s.scrolledAway {
+		s.viewport.GotoBottom()
+	}
 }
 
 func (s *ChatScreen) SetModel(name string) {
 	s.modelName = name
 }
 
-func (s *ChatScreen) AddMessage(role, content string) {
-	s.messages = append(s.messages, ChatMessage{Role: role, Content: content})
+func (s *ChatScreen) SetAgent(name string) {
+	s.agentName = name
+}
+
+func (s *ChatScreen) AddMessage(role, content string, reasoning ...string) {
+	msg := ChatMessage{Role: role, Content: content}
+	if len(reasoning) > 0 {
+		msg.Reasoning = reasoning[0]
+	}
+	s.messages = append(s.messages, msg)
+	s.cachedBase = nil
+	s.renderMessages()
+}
+
+func (s *ChatScreen) UpdateMessage(idx int, role, content, reasoning string) {
+	if idx < 0 || idx >= len(s.messages) {
+		return
+	}
+	s.messages[idx].Role = role
+	s.messages[idx].Content = content
+	s.messages[idx].Reasoning = reasoning
+	s.cachedBase = nil
+	s.renderMessages()
+}
+
+func (s *ChatScreen) RemoveMessage(idx int) {
+	if idx < 0 || idx >= len(s.messages) {
+		return
+	}
+	s.messages = append(s.messages[:idx], s.messages[idx+1:]...)
+	s.cachedBase = nil
+	s.renderMessages()
+}
+
+func (s *ChatScreen) InsertMessage(idx int, role, content, reasoning string) {
+	if idx < 0 || idx > len(s.messages) {
+		return
+	}
+	msg := ChatMessage{Role: role, Content: content, Reasoning: reasoning}
+	s.messages = append(s.messages, ChatMessage{})
+	copy(s.messages[idx+1:], s.messages[idx:])
+	s.messages[idx] = msg
+	s.cachedBase = nil
 	s.renderMessages()
 }
 
 func (s *ChatScreen) AddToolMessage(role, content, toolID string) {
 	s.messages = append(s.messages, ChatMessage{Role: role, Content: content, ToolID: toolID})
+	s.cachedBase = nil
 	s.renderMessages()
 }
 
-func (s *ChatScreen) ShowThinking() {
+func (s *ChatScreen) ShowThinking() tea.Cmd {
 	s.showThinking = true
 	s.thinkingStart = time.Now()
+	s.streamActive = false
+	s.cachedBase = nil
 	s.renderMessages()
+	return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+		return ThinkingTickMsg{}
+	})
 }
 
 func (s *ChatScreen) HideThinking() {
 	s.showThinking = false
+	s.thinkingDur = 0
+	s.streamActive = false
+	s.cachedBase = nil
 	s.renderMessages()
 }
 
 func (s *ChatScreen) AddToolCard(name, args string) {
 	card := components.NewToolCard(name)
 	card.SetArgs(args)
-	card.SetWidth(s.viewport.Height())
+	card.SetWidth(s.width - 8)
 	s.toolCards = append(s.toolCards, card)
+	s.cachedBase = nil
 	s.renderMessages()
 }
 
 func (s *ChatScreen) UpdateToolCard(index int, fn func(*components.ToolCard)) {
 	if index >= 0 && index < len(s.toolCards) {
 		fn(s.toolCards[index])
+		s.cachedBase = nil
 		s.renderMessages()
 	}
 }
 
+func (s *ChatScreen) AppendResponseText(text string) tea.Cmd {
+	s.streamActive = true
+	s.responseText += text
+	s.renderMessages()
+	if !s.scrolledAway {
+		s.viewport.GotoBottom()
+	}
+	return nil
+}
+
+func (s *ChatScreen) SetResponse(text string) {
+	s.responseText = text
+	s.cachedBase = nil
+	s.renderMessages()
+}
+
+func (s *ChatScreen) AppendThought(text string) {
+	dur := s.thinkingDur
+	if dur == 0 && !s.thinkingStart.IsZero() {
+		dur = time.Since(s.thinkingStart)
+	}
+	s.thoughts = append(s.thoughts, thoughtEntry{text: text, dur: dur})
+	s.timeline = append(s.timeline, timelineItem{
+		typ:        tlThought,
+		thoughtIdx: len(s.thoughts) - 1,
+	})
+	s.showThinking = false
+	s.cachedBase = nil
+	s.renderMessages()
+}
+
+func (s *ChatScreen) FlushResponse() {
+	if s.responseText != "" {
+		reasoning := ""
+		if len(s.thoughts) > 0 {
+			parts := make([]string, len(s.thoughts))
+			for i, t := range s.thoughts {
+				parts[i] = t.text
+			}
+			reasoning = strings.Join(parts, "\n")
+		}
+		s.messages = append(s.messages, ChatMessage{Role: "assistant", Content: s.responseText, Reasoning: reasoning})
+		s.responseText = ""
+	}
+	s.streamActive = false
+	s.cachedBase = nil
+}
+
+func (s *ChatScreen) SetStreamActive(active bool) {
+	s.streamActive = active
+	if !active {
+		s.cachedBase = nil
+	}
+}
+
+func (s *ChatScreen) ClearResponseText() {
+	s.responseText = ""
+	s.renderMessages()
+}
+
 func (s *ChatScreen) ClearToolCards() {
 	s.toolCards = nil
+	s.timeline = nil
 	s.showThinking = false
 	s.thinkingStart = time.Time{}
-	s.thinkingExpanded = false
+	s.thinkingDur = 0
 	s.toolCount = 0
 	s.totalDuration = 0
 	s.inputTokens = 0
 	s.outputTokens = 0
 	s.focusedCard = -1
+	s.thoughts = nil
+	s.responseText = ""
+	s.cachedBase = nil
+	s.streamActive = false
 	s.renderMessages()
 }
 
-func (s *ChatScreen) persistToolResults() {
+func (s *ChatScreen) PersistToolResults() {
 	for _, card := range s.toolCards {
 		dur := fmt.Sprintf("%dms", card.Duration())
+		output := card.Output()
+		if output != "" {
+			parts := strings.SplitN(output, "\n", 2)
+			if len(parts) > 1 {
+				firstLines := parts[0]
+				rest := parts[1]
+				if len(rest) > 2000 {
+					rest = rest[:2000] + "... (truncated)"
+				}
+				output = firstLines + "\n" + rest
+			}
+			if len(output) > 2500 {
+				output = output[:2500] + "... (truncated)"
+			}
+		}
 		summary := fmt.Sprintf("  %s  %s  %s",
 			card.Name(),
 			card.Status(),
 			dur,
 		)
+		if output != "" {
+			summary += "\n" + output
+		}
 		s.messages = append(s.messages, ChatMessage{
 			Role:    "tool",
 			Content: summary,
@@ -193,7 +352,7 @@ func (s *ChatScreen) SetToolMetrics(count int, totalDuration int64, inputTokens,
 	s.totalDuration = totalDuration
 	s.inputTokens = inputTokens
 	s.outputTokens = outputTokens
-	s.persistToolResults()
+	s.renderMessages()
 }
 
 func (s *ChatScreen) ToolCount() int {
@@ -204,113 +363,154 @@ func (s *ChatScreen) TotalDuration() int64 {
 	return s.totalDuration
 }
 
+func (s *ChatScreen) hasActiveToolCards() bool {
+	for _, c := range s.toolCards {
+		if c.IsRunning() {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *ChatScreen) renderMessages() {
+	if len(s.messages) == 0 && !s.showThinking {
+		vpW := s.viewport.Width()
+		vpH := s.viewport.Height()
+		if vpH < 3 {
+			return
+		}
+		welcome := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true).Render("Start a conversation")
+		centered := lipgloss.NewStyle().Width(vpW).Align(lipgloss.Center).Render(welcome)
+		topPad := (vpH - 3) / 2
+		if topPad < 0 {
+			topPad = 0
+		}
+		lines := make([]string, vpH)
+		for i := range lines {
+			lines[i] = ""
+		}
+		lines[topPad] = centered
+		s.viewport.SetContent(lines)
+		s.viewport.GotoBottom()
+		return
+	}
+
 	var lines []string
 	for _, msg := range s.messages {
 		roleLabel := ""
 		switch msg.Role {
 		case "user":
 			roleLabel = userStyle.String()
+			barStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("83"))
+			for _, contentLine := range strings.Split(msg.Content, "\n") {
+				lines = append(lines, "  "+barStyle.Render("┃")+"  "+contentLine)
+			}
+			lines = append(lines, "")
+			continue
 		case "assistant":
-			roleLabel = assistantStyle.String()
+			roleLabel = assistantLabel(s.modelName, s.agentName)
 		case "tool":
 			roleLabel = lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Bold(true).Render("Tool")
 		default:
 			roleLabel = systemStyle.String()
 		}
 		lines = append(lines, roleLabel)
-		lines = append(lines, msg.Content)
+		if msg.Role == "assistant" && msg.Reasoning != "" {
+			reasonDur := fmt.Sprintf("%.0fs", float64(len(msg.Reasoning))/40)
+			tokenEst := len(msg.Reasoning) / 4
+			if tokenEst < 1 {
+				tokenEst = 1
+			}
+			lines = append(lines, fmt.Sprintf("  \u25be  Thought for %s, %d tokens", reasonDur, tokenEst))
+			for _, line := range strings.Split(msg.Reasoning, "\n") {
+				lines = append(lines, "    "+line)
+			}
+			lines = append(lines, "")
+		}
+		if msg.Role == "assistant" && msg.Content != "" {
+			s.mdRenderer.SetWidth(s.width - 6)
+			rendered := s.mdRenderer.Render(msg.Content)
+			for _, line := range strings.Split(rendered, "\n") {
+				if components.IsDiffLine(line) {
+					lines = append(lines, "  "+components.ColorizeDiff(line))
+				} else {
+					lines = append(lines, "  "+line)
+				}
+			}
+		} else {
+			for _, contentLine := range strings.Split(msg.Content, "\n") {
+				if msg.Role == "tool" && strings.HasPrefix(contentLine, "  ") {
+					trimmed := contentLine[2:]
+					if components.IsDiffLine(trimmed) {
+						lines = append(lines, "  "+components.ColorizeDiff(trimmed))
+						continue
+					}
+				}
+				lines = append(lines, "  "+contentLine)
+			}
+		}
 		lines = append(lines, "")
 	}
 
-	if s.showThinking {
+	spinnerChars := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	spinner := spinnerChars[s.animTick%10]
+
+	for _, item := range s.timeline {
+		switch item.typ {
+		case tlThought:
+			t := s.thoughts[item.thoughtIdx]
+			dur := fmt.Sprintf("%.0fs", t.dur.Seconds())
+			tokenEst := len(t.text) / 4
+			if tokenEst < 1 {
+				tokenEst = 1
+			}
+			if t.collapsed {
+				lines = append(lines, fmt.Sprintf("  \u25b8  Thought for %s, %d tokens  (ctrl+o to expand)", dur, tokenEst))
+			} else {
+				lines = append(lines, fmt.Sprintf("  \u25be  Thought for %s, %d tokens", dur, tokenEst))
+				for _, line := range strings.Split(t.text, "\n") {
+					lines = append(lines, "    "+line)
+				}
+			}
+			lines = append(lines, "")
+
+		case tlToolCard:
+			card := s.toolCards[item.cardIdx]
+			card.SetFocused(item.cardIdx == s.focusedCard)
+			cardLines := strings.Split(card.View(), "\n")
+			lines = append(lines, cardLines...)
+			lines = append(lines, "")
+		}
+	}
+
+	if len(s.thoughts) == 0 && s.showThinking {
 		if !s.thinkingStart.IsZero() {
 			elapsed := time.Since(s.thinkingStart)
 			dur := fmt.Sprintf("%.1fs", elapsed.Seconds())
-			thinkingLine := fmt.Sprintf("  ◐ thinking... (%s)", dur)
-			lines = append(lines, thinkingStyle.String())
-			lines = append(lines, thinkingLine)
+			lines = append(lines, fmt.Sprintf("  %s  Working... %s", spinner, dur))
 			lines = append(lines, "")
 		} else {
-			lines = append(lines, thinkingStyle.String())
-			lines = append(lines, "  ◐ thinking...")
+			lines = append(lines, "  ⠋  Working...")
 			lines = append(lines, "")
 		}
-	} else if s.thinkingDur > 0 {
+	} else if s.thinkingDur > 0 && s.responseText == "" {
 		dur := fmt.Sprintf("%.1fs", s.thinkingDur.Seconds())
-		expandIcon := "▶"
-		if s.thinkingExpanded {
-			expandIcon = "▼"
-		}
-		focusIndicator := ""
-		if s.focusedCard < 0 {
-			focusIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("▸") + " "
-		}
-		thinkingLine := fmt.Sprintf("  %s%s %s  %s", focusIndicator, expandIcon, thinkingStyle.String(), dur)
-		lines = append(lines, thinkingLine)
-		if s.thinkingExpanded {
-			lines = append(lines, "  ◐ thinking...")
-		}
+		lines = append(lines, fmt.Sprintf("  %s  Working...  %s", spinner, dur))
 		lines = append(lines, "")
 	}
 
-	filterLabel := ""
-	switch s.filterMode {
-	case 1:
-		filterLabel = " [running]"
-	case 2:
-		filterLabel = " [completed]"
-	case 3:
-		filterLabel = " [failed]"
-	}
-	searchLabel := ""
-	if s.searchMode {
-		if s.searchQuery != "" {
-			searchLabel = fmt.Sprintf(" search:/%s/", s.searchQuery)
-		} else {
-			searchLabel = " search:_"
-		}
-	}
-	if filterLabel != "" || (s.searchMode && s.searchQuery != "") {
-		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
-		lines = append(lines, infoStyle.Render(fmt.Sprintf(" Filter:%s%s", filterLabel, searchLabel)))
-	} else if s.searchMode {
-		infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Italic(true)
-		lines = append(lines, infoStyle.Render(" Press any key to search by name..."))
-	}
-
-	renderedAny := false
-	for i, card := range s.toolCards {
-		if s.filterMode > 0 {
-			status := card.Status()
-			switch s.filterMode {
-			case 1:
-				if !card.IsRunning() {
-					continue
-				}
-			case 2:
-				if status != components.ToolCompleted {
-					continue
-				}
-			case 3:
-				if status != components.ToolFailed {
-					continue
-				}
+	if s.responseText != "" {
+		lines = append(lines, assistantLabel(s.modelName, s.agentName))
+		s.mdRenderer.SetWidth(s.width - 6)
+		rendered := s.mdRenderer.Render(s.responseText)
+		for _, line := range strings.Split(rendered, "\n") {
+			if components.IsDiffLine(line) {
+				lines = append(lines, "  "+components.ColorizeDiff(line))
+			} else {
+				lines = append(lines, "  "+line)
 			}
 		}
-		if s.searchMode && s.searchQuery != "" {
-			if !strings.Contains(strings.ToLower(card.Name()), strings.ToLower(s.searchQuery)) {
-				continue
-			}
-		}
-		if renderedAny || s.thinkingDur > 0 {
-			lines = append(lines, timelineStyle.Render("  ↓"))
-		}
-		card.SetFocused(i == s.focusedCard)
-		cardLines := strings.Split(card.View(), "\n")
-		lines = append(lines, cardLines...)
 		lines = append(lines, "")
-		renderedAny = true
 	}
 
 	if s.toolCount > 0 && len(s.toolCards) > 0 {
@@ -327,6 +527,17 @@ func (s *ChatScreen) renderMessages() {
 	}
 
 	s.viewport.SetContent(lines)
+	if s.streamActive && s.cachedBase == nil && s.responseText != "" {
+		labelIdx := len(lines)
+		for i := len(lines) - 1; i >= 0; i-- {
+			if strings.Contains(lines[i], s.modelName) && strings.Contains(lines[i], s.agentName) {
+				labelIdx = i
+				break
+			}
+		}
+		s.cachedBase = make([]string, labelIdx)
+		copy(s.cachedBase, lines[:labelIdx])
+	}
 	if !s.scrolledAway {
 		s.viewport.GotoBottom()
 	}
@@ -345,26 +556,21 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 		s.scrollPending = false
 		return nil
 
-	case AutoCollapseMsg:
-		if msg.Index >= 0 && msg.Index < len(s.toolCards) {
-			s.toolCards[msg.Index].SetExpanded(false)
-			s.renderMessages()
-		}
-		return nil
-
 	case ToolQueuedMsg:
 		card := components.NewToolCard(msg.Name)
 		card.SetArgs(msg.Args)
 		card.SetWidth(s.width - 8)
 		s.toolCards = append(s.toolCards, card)
+		s.timeline = append(s.timeline, timelineItem{
+			typ:     tlToolCard,
+			cardIdx: len(s.toolCards) - 1,
+		})
 		if s.showThinking && !s.thinkingStart.IsZero() {
 			s.thinkingDur = time.Since(s.thinkingStart)
 		}
 		s.showThinking = false
 		s.renderMessages()
-		return tea.Tick(toolAnimTickInterval, func(time.Time) tea.Msg {
-			return ToolAnimTick{}
-		})
+		return nil
 
 	case ToolInitializingMsg:
 		idx := msg.Index
@@ -394,22 +600,28 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 		s.UpdateToolCard(idx, func(c *components.ToolCard) {
 			c.SetStatus(components.ToolRunning)
 		})
-		return tea.Tick(toolAnimTickInterval, func(time.Time) tea.Msg {
-			return ToolAnimTick{}
-		})
+		return nil
 
 	case ToolOutputMsg:
-		s.UpdateToolCard(len(s.toolCards)-1, func(c *components.ToolCard) {
+		idx := len(s.toolCards) - 1
+		if msg.Index >= 0 && msg.Index < len(s.toolCards) {
+			idx = msg.Index
+		}
+		s.UpdateToolCard(idx, func(c *components.ToolCard) {
 			c.SetOutput(msg.Output)
 		})
 		return nil
 
 	case ToolCompletedMsg:
 		idx := len(s.toolCards) - 1
+		if msg.Index >= 0 && msg.Index < len(s.toolCards) {
+			idx = msg.Index
+		}
 		s.UpdateToolCard(idx, func(c *components.ToolCard) {
 			if msg.Status == "completed" {
 				c.SetStatus(components.ToolCompleted)
 				c.SetOutput(msg.Output)
+				c.SetExpanded(false)
 			} else {
 				c.SetStatus(components.ToolFailed)
 				c.SetOutput(msg.Output)
@@ -420,23 +632,19 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 		s.toolCount++
 		s.totalDuration += msg.Duration
 		s.renderMessages()
-		return tea.Tick(autoCollapseDelay, func(time.Time) tea.Msg {
-			return AutoCollapseMsg{Index: idx}
-		})
+		return nil
 
-	case ToolAnimTick:
-		s.animTick++
-		animated := false
-		for _, c := range s.toolCards {
-			if c.IsRunning() {
-				c.SetAnimFrame(s.animTick)
-				animated = true
+	case ThinkingTickMsg:
+		if s.showThinking || s.thinkingDur > 0 || s.hasActiveToolCards() || s.streamActive {
+			s.animTick++
+			for _, c := range s.toolCards {
+				if c.IsRunning() {
+					c.SetAnimFrame(s.animTick)
+				}
 			}
-		}
-		if animated {
 			s.renderMessages()
-			return tea.Tick(toolAnimTickInterval, func(time.Time) tea.Msg {
-				return ToolAnimTick{}
+			return tea.Tick(100*time.Millisecond, func(time.Time) tea.Msg {
+				return ThinkingTickMsg{}
 			})
 		}
 		return nil
@@ -445,15 +653,9 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 		m := msg.Mouse()
 		if m.Button == tea.MouseLeft && len(s.toolCards) > 0 {
 			if s.focusedCard >= 0 {
-				card := s.toolCards[s.focusedCard]
-				if card.Expanded() && card.OutputLines() > 15 {
-					card.ToggleShowAll()
-				} else {
-					card.ToggleExpanded()
-				}
+				s.toolCards[s.focusedCard].ToggleExpanded()
 			} else {
-				card := s.toolCards[len(s.toolCards)-1]
-				card.ToggleExpanded()
+				s.toolCards[len(s.toolCards)-1].ToggleExpanded()
 			}
 			s.renderMessages()
 		}
@@ -485,6 +687,37 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case tea.KeyMsg:
+		if msg.String() == "ctrl+o" {
+			anyExp := false
+			for _, t := range s.thoughts {
+				if !t.collapsed {
+					anyExp = true
+					break
+				}
+			}
+			if !anyExp {
+				for _, c := range s.toolCards {
+					if c.Expanded() {
+						anyExp = true
+						break
+					}
+				}
+			}
+			if anyExp {
+				for i := range s.thoughts {
+					s.thoughts[i].collapsed = true
+				}
+				for _, c := range s.toolCards {
+					c.SetExpanded(false)
+				}
+			} else {
+				for i := range s.thoughts {
+					s.thoughts[i].collapsed = false
+				}
+			}
+			s.renderMessages()
+			return nil
+		}
 		if s.focusedCard >= 0 && len(s.toolCards) > 0 {
 			return s.handleCardFocusKey(msg.String())
 		}
@@ -494,33 +727,12 @@ func (s *ChatScreen) Update(msg tea.Msg) tea.Cmd {
 }
 
 func (s *ChatScreen) handleCardFocusKey(key string) tea.Cmd {
-	if s.searchMode {
-		if key == "esc" || key == "enter" {
-			s.searchMode = false
-			s.searchQuery = ""
-			s.renderMessages()
-			return nil
-		}
-		if len(key) == 1 && key >= " " {
-			s.searchQuery = key
-			s.renderMessages()
-		}
-		return nil
-	}
-
-	if key == "esc" {
-		if s.searchMode || s.filterMode > 0 {
-			s.searchMode = false
-			s.searchQuery = ""
-			s.filterMode = 0
-			s.renderMessages()
-		}
+	switch key {
+	case "esc", "tab":
 		s.focusedCard = -1
 		s.renderMessages()
 		return nil
-	}
 
-	switch key {
 	case "up":
 		s.focusedCard--
 		if s.focusedCard < -1 {
@@ -528,6 +740,7 @@ func (s *ChatScreen) handleCardFocusKey(key string) tea.Cmd {
 		} else if s.focusedCard < 0 && s.thinkingDur == 0 {
 			s.focusedCard = len(s.toolCards) - 1
 		}
+		s.renderMessages()
 		return nil
 
 	case "down":
@@ -539,12 +752,11 @@ func (s *ChatScreen) handleCardFocusKey(key string) tea.Cmd {
 				s.focusedCard = 0
 			}
 		}
+		s.renderMessages()
 		return nil
 
 	case "enter":
-		if s.focusedCard < 0 {
-			s.thinkingExpanded = !s.thinkingExpanded
-		} else {
+		if s.focusedCard >= 0 {
 			card := s.toolCards[s.focusedCard]
 			if card.Expanded() && card.OutputLines() > 15 {
 				card.ToggleShowAll()
@@ -552,20 +764,6 @@ func (s *ChatScreen) handleCardFocusKey(key string) tea.Cmd {
 				card.ToggleExpanded()
 			}
 		}
-		s.renderMessages()
-		return nil
-
-	case " ":
-		if s.focusedCard < 0 {
-			s.thinkingExpanded = false
-		} else {
-			s.toolCards[s.focusedCard].SetExpanded(false)
-		}
-		s.renderMessages()
-		return nil
-
-	case "tab":
-		s.focusedCard = -1
 		s.renderMessages()
 		return nil
 
@@ -586,42 +784,14 @@ func (s *ChatScreen) handleScrollKey(key string) tea.Cmd {
 	case "enter":
 		if len(s.toolCards) > 0 {
 			lastIdx := len(s.toolCards) - 1
-			s.toolCards[lastIdx].ToggleExpanded()
-			s.renderMessages()
-		}
-		return nil
-
-	case " ":
-		if len(s.toolCards) > 0 {
-			for _, c := range s.toolCards {
-				c.SetExpanded(false)
+			card := s.toolCards[lastIdx]
+			if card.Expanded() && card.OutputLines() > 15 {
+				card.ToggleShowAll()
+			} else {
+				card.ToggleExpanded()
 			}
 			s.renderMessages()
 		}
-		return nil
-
-	case "esc":
-		if s.searchMode || s.filterMode > 0 {
-			s.searchMode = false
-			s.searchQuery = ""
-			s.filterMode = 0
-			s.renderMessages()
-		}
-		return nil
-
-	case "/":
-		s.searchMode = !s.searchMode
-		if !s.searchMode {
-			s.searchQuery = ""
-		}
-		s.focusedCard = -1
-		s.renderMessages()
-		return nil
-
-	case "f":
-		s.filterMode = (s.filterMode + 1) % 4
-		s.focusedCard = -1
-		s.renderMessages()
 		return nil
 
 	case "pgup", "ctrl+b":

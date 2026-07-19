@@ -13,15 +13,39 @@ import (
 )
 
 var (
-	ErrEncrypt = errors.New("encryption failed")
-	ErrDecrypt = errors.New("decryption failed")
+	ErrEncrypt       = errors.New("encryption failed")
+	ErrDecrypt       = errors.New("decryption failed")
+	encryptionKeyDir = ""
 )
 
+func SetEncryptionKeyDir(dir string) {
+	encryptionKeyDir = dir
+}
+
 func deriveKey() []byte {
+	keyFile := ""
+	if encryptionKeyDir != "" {
+		keyFile = encryptionKeyDir + "/termcode.key"
+	}
+
+	if keyFile != "" {
+		if data, err := os.ReadFile(keyFile); err == nil && len(data) == 32 {
+			return data
+		}
+	}
+
 	hostname, _ := os.Hostname()
 	seed := hostname + "-" + runtime.GOARCH + "-" + runtime.GOOS
 	hash := sha256.Sum256([]byte(seed))
-	return hash[:]
+	key := hash[:]
+
+	if keyFile != "" {
+		if err := os.MkdirAll(encryptionKeyDir, 0o700); err == nil {
+			os.WriteFile(keyFile, key, 0o600)
+		}
+	}
+
+	return key
 }
 
 func EncryptAPIKey(plaintext string) (string, error) {

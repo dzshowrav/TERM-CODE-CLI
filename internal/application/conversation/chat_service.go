@@ -4,7 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
 
+	cost "termcode/internal/application/cost"
 	toolapp "termcode/internal/application/tool"
 	domainllm "termcode/internal/domain/llm"
 	"termcode/internal/domain/session"
@@ -38,26 +44,44 @@ type ToolEvent struct {
 type ToolEventCallback func(ToolEvent)
 
 type ChatResult struct {
-	Content      string
-	InputTokens  int
-	OutputTokens int
-	TotalTokens  int
+	Content          string
+	ReasoningContent string
+	InputTokens      int
+	OutputTokens     int
+	TotalTokens      int
 }
 
-const maxToolRounds = 10
-
 type Service struct {
-	router  domainllm.Router
-	toolSvc *toolapp.Service
-	modelID string
+	router         domainllm.Router
+	toolSvc        *toolapp.Service
+	modelID        string
+	costEngine     *cost.Engine
+	checkpointPath string
+	mu             sync.Mutex
 }
 
 func NewService(router domainllm.Router) *Service {
+	svc := toolapp.NewService()
+	svc.SetPermissionChecker(toolapp.NewPermissionChecker())
 	return &Service{
 		router:  router,
-		toolSvc: toolapp.NewService(),
+		toolSvc: svc,
 		modelID: "gpt-4o",
 	}
+}
+
+func (s *Service) ToolService() *toolapp.Service {
+	return s.toolSvc
+}
+
+func (s *Service) SetPermissionRequestFunc(f func(toolName, args string, resultCh chan<- string)) {
+	if pc, ok := s.toolSvc.PermissionChecker().(*toolapp.StorePermissionChecker); ok {
+		pc.SetRequestFunc(f)
+	}
+}
+
+func (s *Service) SetCostEngine(ce *cost.Engine) {
+	s.costEngine = ce
 }
 
 func (s *Service) SetModelID(modelID string) {
@@ -68,11 +92,60 @@ func (s *Service) ModelID() string {
 	return s.modelID
 }
 
+func (s *Service) SetCheckpointPath(path string) {
+	s.checkpointPath = path
+}
+
+func (s *Service) SaveCheckpoint(state interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.checkpointPath == "" {
+		return nil
+	}
+	data, err := json.Marshal(state)
+	if err != nil {
+		return fmt.Errorf("marshal checkpoint: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(s.checkpointPath), 0o755); err != nil {
+		return fmt.Errorf("mkdir checkpoint: %w", err)
+	}
+	tmpPath := s.checkpointPath + ".tmp"
+	if err := os.WriteFile(tmpPath, data, 0o644); err != nil {
+		return fmt.Errorf("write checkpoint: %w", err)
+	}
+	return os.Rename(tmpPath, s.checkpointPath)
+}
+
+func (s *Service) LoadCheckpoint(state interface{}) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.checkpointPath == "" {
+		return fmt.Errorf("no checkpoint path set")
+	}
+	data, err := os.ReadFile(s.checkpointPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("no checkpoint found")
+		}
+		return fmt.Errorf("read checkpoint: %w", err)
+	}
+	return json.Unmarshal(data, state)
+}
+
+func (s *Service) ClearCheckpoint() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.checkpointPath != "" {
+		return os.Remove(s.checkpointPath)
+	}
+	return nil
+}
+
 func (s *Service) Tools() []tool.Tool {
 	return s.toolSvc.AvailableTools()
 }
 
-func (s *Service) SendMessage(ctx context.Context, prompt string, history []session.Message, onChunk func(string, bool), onToolEvent ToolEventCallback) (*ChatResult, error) {
+func (s *Service) SendMessage(ctx context.Context, prompt string, history []session.Message, onChunk func(content string, reasoning bool, done bool), onToolEvent ToolEventCallback) (*ChatResult, error) {
 	endpoint, err := s.router.Resolve(ctx, s.modelID)
 	if err != nil {
 		return nil, fmt.Errorf("resolve endpoint: %w", err)
@@ -86,9 +159,9 @@ func (s *Service) SendMessage(ctx context.Context, prompt string, history []sess
 	return s.converse(ctx, adapter, messages, toolDefs, onChunk, onToolEvent, 0)
 }
 
-func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, messages []apitypes.ChatMessage, toolDefs []map[string]any, onChunk func(string, bool), onToolEvent ToolEventCallback, round int) (*ChatResult, error) {
-	if round > maxToolRounds {
-		return nil, fmt.Errorf("too many tool call rounds (%d)", maxToolRounds)
+func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, messages []apitypes.ChatMessage, toolDefs []map[string]any, onChunk func(content string, reasoning bool, done bool), onToolEvent ToolEventCallback, round int) (*ChatResult, error) {
+	if len(toolDefs) == 0 {
+		return s.converseStream(ctx, adapter, messages, onChunk)
 	}
 
 	req := &apitypes.ChatRequest{
@@ -97,10 +170,7 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 		Stream:      false,
 		Temperature: 0.7,
 		MaxTokens:   4096,
-	}
-
-	if len(toolDefs) > 0 {
-		req.Tools = toolDefs
+		Tools:       toolDefs,
 	}
 
 	resp, err := adapter.Chat(ctx, req)
@@ -109,11 +179,15 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response")
+		return &ChatResult{}, nil
 	}
 
 	choice := resp.Choices[0]
 	content := choice.Message.Content
+	reasoningContent := choice.ReasoningText()
+	if reasoningContent == "" {
+		reasoningContent = choice.Message.ReasoningText()
+	}
 	finishReason := choice.FinishReason
 
 	inputTokens := 0
@@ -124,6 +198,15 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 	}
 
 	if finishReason == "tool_calls" && len(choice.Message.ToolCalls) > 0 {
+		if onChunk != nil {
+			if reasoningContent != "" {
+				onChunk(reasoningContent, true, false)
+			}
+			if content != "" {
+				onChunk(content, false, false)
+			}
+		}
+
 		messages = append(messages, apitypes.ChatMessage{
 			Role:      "assistant",
 			Content:   content,
@@ -179,7 +262,19 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 				})
 			}
 
+			s.toolSvc.SetOutputCallback(func(output string) {
+				if onToolEvent != nil {
+					onToolEvent(ToolEvent{
+						Type:   ToolOutput,
+						Index:  i,
+						Name:   tc.Function.Name,
+						Args:   argsJSON,
+						Output: output,
+					})
+				}
+			})
 			result := s.toolSvc.Execute(ctx, tc.Function.Name, args)
+			s.toolSvc.SetOutputCallback(nil)
 
 			if onToolEvent != nil {
 				ev := ToolEvent{
@@ -208,6 +303,10 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 			})
 		}
 
+		if err := s.SaveCheckpoint(messages); err != nil {
+			return nil, fmt.Errorf("save checkpoint: %w", err)
+		}
+
 		next, err := s.converse(ctx, adapter, messages, toolDefs, onChunk, onToolEvent, round+1)
 		if err != nil {
 			return nil, err
@@ -218,15 +317,105 @@ func (s *Service) converse(ctx context.Context, adapter *llm.OpenAIAdapter, mess
 		return next, nil
 	}
 
+	if err := s.SaveCheckpoint(messages); err != nil {
+		return nil, fmt.Errorf("save checkpoint: %w", err)
+	}
+
 	if onChunk != nil {
-		onChunk(content, true)
+		if reasoningContent != "" {
+			onChunk(reasoningContent, true, false)
+		}
+		onChunk(content, false, true)
 	}
 
 	return &ChatResult{
-		Content:      content,
-		InputTokens:  inputTokens,
-		OutputTokens: outputTokens,
-		TotalTokens:  inputTokens + outputTokens,
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		TotalTokens:      inputTokens + outputTokens,
+	}, nil
+}
+
+func (s *Service) converseStream(ctx context.Context, adapter *llm.OpenAIAdapter, messages []apitypes.ChatMessage, onChunk func(content string, reasoning bool, done bool)) (*ChatResult, error) {
+	streamCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+
+	req := &apitypes.ChatRequest{
+		Model:       s.modelID,
+		Messages:    messages,
+		Temperature: 0.7,
+		MaxTokens:   4096,
+	}
+
+	if onChunk == nil {
+		return &ChatResult{}, nil
+	}
+
+	chunks, errs := adapter.ChatStream(streamCtx, req)
+
+	var contentBuf, reasoningBuf strings.Builder
+	inputTokens, outputTokens := 0, 0
+	budgetWarningIssued := false
+
+	streamDone := false
+	for !streamDone {
+		select {
+		case chunk, ok := <-chunks:
+			if !ok {
+				streamDone = true
+				continue
+			}
+			for _, c := range chunk.Choices {
+				rt := c.Delta.ReasoningText()
+				if rt != "" {
+					reasoningBuf.WriteString(rt)
+					onChunk(rt, true, false)
+				}
+				if c.Delta.Content != "" {
+					contentBuf.WriteString(c.Delta.Content)
+					outputTokens++
+					onChunk(c.Delta.Content, false, false)
+				}
+				if c.FinishReason == "stop" || c.FinishReason == "length" {
+					streamDone = true
+				}
+			}
+
+			if s.costEngine != nil && !budgetWarningIssued && outputTokens > 0 && outputTokens%100 == 0 {
+				remaining := s.costEngine.BudgetRemaining()
+				if remaining > 0 && remaining < 0.001 {
+					budgetWarningIssued = true
+					warning := fmt.Sprintf("\n\n[budget-warning: $%.4f remaining]", remaining)
+					contentBuf.WriteString(warning)
+					onChunk(warning, false, false)
+				}
+			}
+
+		case err := <-errs:
+			if err != nil {
+				return nil, fmt.Errorf("stream error: %w", err)
+			}
+			streamDone = true
+
+		case <-streamCtx.Done():
+			return nil, streamCtx.Err()
+		}
+	}
+
+	content := contentBuf.String()
+	reasoningContent := reasoningBuf.String()
+
+	if onChunk != nil {
+		onChunk("", false, true)
+	}
+
+	return &ChatResult{
+		Content:          content,
+		ReasoningContent: reasoningContent,
+		InputTokens:      inputTokens,
+		OutputTokens:     outputTokens,
+		TotalTokens:      inputTokens + outputTokens,
 	}, nil
 }
 

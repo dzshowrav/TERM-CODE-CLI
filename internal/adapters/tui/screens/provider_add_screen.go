@@ -70,10 +70,7 @@ func (s *ProviderAddScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
 			s.done = true
 		case "enter":
 			if s.focusField < 4 {
-				if s.onSubmit != nil {
-					s.result = s.onSubmit(s.name, s.baseURL, s.apiKey, s.desc)
-				}
-				s.done = true
+				s.focusField++
 			} else if s.focusField == 4 {
 				if s.onTest != nil {
 					s.testStatus = s.onTest(s.name, s.baseURL, s.apiKey, s.desc)
@@ -88,9 +85,10 @@ func (s *ProviderAddScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
 		case "tab", "down":
 			s.focusField = (s.focusField + 1) % 6
 		case "shift+tab", "up":
-			s.focusField--
-			if s.focusField < 0 {
+			if s.focusField == 0 {
 				s.focusField = 5
+			} else {
+				s.focusField--
 			}
 		case "backspace":
 			if s.focusField < 4 {
@@ -166,34 +164,34 @@ func (s *ProviderAddScreen) View() string {
 
 	for i, f := range fields {
 		val := f.value
+		if val == "" && i != s.focusField {
+			val = formHintStyle.Render(f.hint)
+		}
 		if i == s.focusField {
 			val += "█"
 		}
-		if val == "" || val == "█" {
-			val = formHintStyle.Render(f.hint)
+		maxVal := innerWidth - len(f.label) - 7
+		if maxVal < 5 {
+			maxVal = 5
+		}
+		if len([]rune(val)) > maxVal {
+			val = string([]rune(val)[:maxVal]) + "..."
 		}
 		fieldLine := fmt.Sprintf(" %s:  %s", formLabelStyle.Render(f.label), formInputStyle.Render(val))
 		lines = append(lines, fieldLine)
 		lines = append(lines, sep)
 	}
 
-	testBtn := "  "
+	testBtn := formBtnNormal.Render("[ Test Connection ]")
+	saveBtn := formBtnNormal.Render("[ Save Provider ]")
 	if s.focusField == 4 {
-		testBtn += formBtnActive.Render("[ Test Connection ]")
-	} else {
-		testBtn += formBtnNormal.Render("[ Test Connection ]")
+		testBtn = formBtnActive.Render("[ Test Connection ]")
 	}
-	saveBtn := ""
 	if s.focusField == 5 {
-		saveBtn += formBtnActive.Render("[ Save Provider ]")
-	} else {
-		saveBtn += formBtnNormal.Render("[ Save Provider ]")
+		saveBtn = formBtnActive.Render("[ Save Provider ]")
 	}
-	btnPad := innerWidth - lipgloss.Width(testBtn) - lipgloss.Width(saveBtn)
-	if btnPad < 1 {
-		btnPad = 1
-	}
-	btnLine := testBtn + strings.Repeat(" ", btnPad) + saveBtn
+	btnLine := lipgloss.JoinHorizontal(lipgloss.Center, testBtn, saveBtn)
+	btnLine = lipgloss.NewStyle().Width(innerWidth).Align(lipgloss.Center).Render(btnLine)
 
 	lines = append(lines, "")
 	if s.testStatus != "" {

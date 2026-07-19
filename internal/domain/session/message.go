@@ -20,6 +20,7 @@ type Message struct {
 	SessionID string    `json:"session_id"`
 	Role      Role      `json:"role"`
 	Content   string    `json:"content"`
+	Reasoning string    `json:"reasoning,omitempty"`
 	ToolCall  string    `json:"tool_call,omitempty"`
 	ToolRes   string    `json:"tool_result,omitempty"`
 	TokenIn   int       `json:"tokens_in"`

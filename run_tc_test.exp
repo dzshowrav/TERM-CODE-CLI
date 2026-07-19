@@ -1,0 +1,6 @@
+#!/usr/bin/expect
+spawn /data/data/com.termux/files/usr/bin/tc
+expect "OpenChat"
+send "/mcp\r"
+expect "test"
+# ... wait I don't know the exact UI to run the read tool ...

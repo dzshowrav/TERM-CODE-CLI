@@ -17,6 +17,7 @@ type HomeScreen struct {
 	agentName     string
 	workspacePath string
 	providerURL   string
+	anim          *BackgroundAnim
 }
 
 type HomeScreenConfig struct {
@@ -62,20 +63,28 @@ func (s *HomeScreen) UpdateConfig(cfg HomeScreenConfig) {
 	}
 }
 
+func (s *HomeScreen) SetAnim(a *BackgroundAnim) {
+	s.anim = a
+}
+
 func (s *HomeScreen) View() string {
 	availH := s.height - 4
 	if availH < 3 {
 		return ""
 	}
 
-	// Full terminal width — title/hint centered, Content handles indent padding
 	cw := s.width
 
-	title := styles.TitleStyle.Width(cw).Align(lipgloss.Center).Render("TERM CODE CLI")
+	var titleStyle = styles.TitleStyle
+	if s.anim != nil {
+		gs := s.anim.GlowStyle()
+		titleStyle = styles.TitleStyle.Foreground(gs.GetForeground())
+	}
+	title := titleStyle.Width(cw).Align(lipgloss.Center).Render("TERM CODE CLI")
 	tagline := styles.Subtitle.Width(cw).Align(lipgloss.Center).Render("Universal Coding Agent")
 
 	line1 := styles.Content(cw, "Provider : "+
-		styles.ValueStyle.Render(fmt.Sprintf("%s (%s)", s.providerName, s.providerURL)))
+		styles.ValueStyle.Render(s.providerName))
 
 	line2 := styles.Content(cw, "Model    : "+
 		styles.ValueStyle.Render(s.modelName))
@@ -113,6 +122,10 @@ func (s *HomeScreen) View() string {
 	}
 	if len(lines) > availH {
 		lines = lines[:availH]
+	}
+
+	if s.anim != nil {
+		lines = s.anim.RenderParticles(lines)
 	}
 
 	return strings.Join(lines, "\n")

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
 
 	"termcode/internal/adapters/tui/styles"
@@ -25,6 +26,7 @@ type SettingsScreen struct {
 	width    int
 	height   int
 	settings []SettingEntry
+	done     bool
 }
 
 func NewSettingsScreen() *SettingsScreen {
@@ -43,6 +45,25 @@ func (s *SettingsScreen) SetSettings(settings []SettingEntry) {
 	s.settings = settings
 }
 
+func (s *SettingsScreen) Done() bool {
+	return s.done
+}
+
+func (s *SettingsScreen) Result() string {
+	return ""
+}
+
+func (s *SettingsScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc", "q", "enter":
+			s.done = true
+		}
+	}
+	return s, nil
+}
+
 func (s *SettingsScreen) grouped() map[string][]SettingEntry {
 	groups := make(map[string][]SettingEntry)
 	for _, set := range s.settings {
@@ -52,10 +73,14 @@ func (s *SettingsScreen) grouped() map[string][]SettingEntry {
 }
 
 func (s *SettingsScreen) View() string {
-	header := styles.H1.Render("Settings")
-	sep := styles.SeparatorLine(s.width)
+	innerW := s.width - 2
+	sep := styles.DialogSep(innerW)
 
 	var lines []string
+	lines = append(lines, fmt.Sprintf("%-*s%s", innerW-4, "Settings", "esc"))
+	lines = append(lines, sep)
+	lines = append(lines, "")
+
 	for group, entries := range s.grouped() {
 		lines = append(lines, settingGroup.Render("── "+group+" ──"))
 		for _, e := range entries {
@@ -64,10 +89,16 @@ func (s *SettingsScreen) View() string {
 		lines = append(lines, "")
 	}
 
-	if len(lines) == 0 {
-		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep,
-			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No settings available.")))
+	if len(s.settings) == 0 {
+		lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No settings available."))
+		lines = append(lines, "")
 	}
 
-	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
+	hintText := "esc: Close"
+	hintLine := lipgloss.NewStyle().Width(innerW).Align(lipgloss.Center).Render(styles.HintStyle.Render(hintText))
+	lines = append(lines, hintLine)
+	lines = append(lines, "")
+
+	body := strings.Join(lines, "\n")
+	return styles.DialogBox(s.width, body)
 }

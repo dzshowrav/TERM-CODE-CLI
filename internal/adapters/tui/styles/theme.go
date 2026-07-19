@@ -28,14 +28,23 @@ func Content(width int, body string) string {
 }
 
 func SeparatorLine(width int) string {
+	if width < 1 {
+		return ""
+	}
 	return Separator.Render(strings.Repeat("─", width))
 }
 
 func DialogSep(width int) string {
+	if width < 1 {
+		return ""
+	}
 	return DialogSepStyle.Render(strings.Repeat("─", width))
 }
 
 func DialogBox(totalWidth int, body string) string {
+	if totalWidth < 3 {
+		return body
+	}
 	innerWidth := totalWidth - 2
 
 	bH := DialogBorder.Render("─")

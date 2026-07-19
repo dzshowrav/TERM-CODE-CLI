@@ -2,7 +2,6 @@ package components
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/lipgloss"
@@ -149,7 +148,7 @@ func (c *CommandInput) View() string {
 		if len(runes) > maxLen {
 			runes = runes[:maxLen]
 		}
-		content = inputPrompt + string(runes)
+		content = inputPrompt + "█" + string(runes)
 	} else {
 		runes := []rune(display)
 		maxLen := c.width - 4
@@ -158,13 +157,16 @@ func (c *CommandInput) View() string {
 		}
 		disp := string(runes)
 
-		cursorRunes := []rune(disp)
-		cursorPos := utf8.RuneCountInString(disp[:min(c.cursor, len(disp))])
+		cRunes := []rune(disp)
+		cursorPos := min(c.cursor, len(cRunes))
+		if cursorPos > len(cRunes) {
+			cursorPos = len(cRunes)
+		}
 
 		cursor := "█"
 
-		before := string(cursorRunes[:cursorPos])
-		after := string(cursorRunes[cursorPos:])
+		before := string(cRunes[:cursorPos])
+		after := string(cRunes[cursorPos:])
 		content = inputPrompt + before + cursor + after
 	}
 

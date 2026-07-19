@@ -337,7 +337,7 @@
     ".opencode/skills/go-best-practices/SKILL.md",
     ".opencode/skills/bubbletea-architecture/SKILL.md",
     ".opencode/skills/clean-architecture/SKILL.md",
-    ".opencode/skills/mobile-first-termux/SKILL.md"
+    ".opencode/skills/mobile-first-termux/SKILL.md",
   ],
   "formatter": {
     "gofumpt": {},

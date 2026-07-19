@@ -1,3 +1,5 @@
+// Package session is deprecated and not wired into the application.
+// Use sqlite repos directly instead.
 package session
 
 import (

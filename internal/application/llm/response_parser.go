@@ -8,10 +8,11 @@ import (
 )
 
 type ParsedResponse struct {
-	Content      string
-	ToolCalls    []ToolCallInfo
-	FinishReason string
-	Usage        *UsageInfo
+	Content          string
+	ReasoningContent string
+	ToolCalls        []ToolCallInfo
+	FinishReason     string
+	Usage            *UsageInfo
 }
 
 type ToolCallInfo struct {
@@ -38,8 +39,12 @@ func (p *ResponseParser) Parse(resp *apitypes.ChatResponse) (*ParsedResponse, er
 
 	choice := resp.Choices[0]
 	parsed := &ParsedResponse{
-		Content:      choice.Message.Content,
-		FinishReason: choice.FinishReason,
+		Content:          choice.Message.Content,
+		ReasoningContent: choice.ReasoningText(),
+		FinishReason:     choice.FinishReason,
+	}
+	if parsed.ReasoningContent == "" {
+		parsed.ReasoningContent = choice.Message.ReasoningText()
 	}
 
 	if resp.Usage != nil {

@@ -2,7 +2,30 @@ package components
 
 import (
 	"strings"
+	"unicode/utf8"
 )
+
+func visibleWidth(s string) int {
+	w := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\x1b' {
+			for i++; i < len(s); i++ {
+				if s[i] >= 'a' && s[i] <= 'z' || s[i] >= 'A' && s[i] <= 'Z' {
+					break
+				}
+			}
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError {
+			w++
+		} else {
+			w++
+		}
+		i += size - 1
+	}
+	return w
+}
 
 type Viewport struct {
 	content  []string
@@ -29,28 +52,53 @@ func (v *Viewport) SetContent(content any) {
 	default:
 		return
 	}
+	v.content = v.wrapLines(lines)
+	v.maxLines = len(v.content)
+	if v.offset > v.maxLines-v.height {
+		v.offset = v.maxLines - v.height
+	}
+	if v.offset < 0 {
+		v.offset = 0
+	}
+}
+
+func (v *Viewport) wrapLines(lines []string) []string {
 	var wrapped []string
 	for _, line := range lines {
-		if v.width > 0 && len([]rune(line)) > v.width {
+		if v.width > 0 && visibleWidth(line) > v.width {
 			runes := []rune(line)
 			for len(runes) > 0 {
 				if len(runes) <= v.width {
 					wrapped = append(wrapped, string(runes))
 					break
 				}
-				wrapped = append(wrapped, string(runes[:v.width]))
-				runes = runes[v.width:]
+				breakAt := v.width
+				for i := v.width - 1; i > v.width/2; i-- {
+					if runes[i] == ' ' {
+						breakAt = i + 1
+						break
+					}
+				}
+				wrapped = append(wrapped, string(runes[:breakAt]))
+				runes = runes[breakAt:]
 			}
 		} else {
 			wrapped = append(wrapped, line)
 		}
 	}
-	v.content = wrapped
-	v.maxLines = len(wrapped)
-	if v.offset > v.maxLines-v.height {
-		v.offset = v.maxLines - v.height
+	return wrapped
+}
+
+func (v *Viewport) AppendContent(lines []string) {
+	wrapped := v.wrapLines(lines)
+	v.content = append(v.content, wrapped...)
+	v.maxLines = len(v.content)
+	if !v.AtBottom() {
+		return
 	}
-	if v.offset < 0 {
+	if v.maxLines > v.height {
+		v.offset = v.maxLines - v.height
+	} else {
 		v.offset = 0
 	}
 }
@@ -117,6 +165,10 @@ func (v *Viewport) Height() int {
 	return v.height
 }
 
+func (v *Viewport) Width() int {
+	return v.width
+}
+
 func (v *Viewport) AtTop() bool {
 	return v.offset <= 0
 }
@@ -130,6 +182,9 @@ func (v *Viewport) Update(msg any) {
 
 func (v *Viewport) View() string {
 	if len(v.content) == 0 {
+		if v.height < 1 {
+			return ""
+		}
 		return strings.Repeat("\n", v.height-1)
 	}
 

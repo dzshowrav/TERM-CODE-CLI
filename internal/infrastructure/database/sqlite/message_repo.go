@@ -17,12 +17,25 @@ func NewMessageRepo(db *sql.DB) *MessageRepo {
 	return &MessageRepo{db: db}
 }
 
+func (r *MessageRepo) Update(ctx context.Context, m *session.Message) error {
+	_, err := r.db.ExecContext(
+		ctx, `
+		UPDATE messages SET content = ?, reasoning = ?, tool_call = ?, tool_result = ?, tokens_in = ?, tokens_out = ?
+		WHERE id = ?`,
+		m.Content, m.Reasoning, m.ToolCall, m.ToolRes, m.TokenIn, m.TokenOut, m.ID,
+	)
+	if err != nil {
+		return fmt.Errorf("update message: %w", err)
+	}
+	return nil
+}
+
 func (r *MessageRepo) Create(ctx context.Context, m *session.Message) error {
 	_, err := r.db.ExecContext(
 		ctx, `
-		INSERT INTO messages (id, session_id, role, content, tool_call, tool_result, tokens_in, tokens_out, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		m.ID, m.SessionID, string(m.Role), m.Content, m.ToolCall, m.ToolRes, m.TokenIn, m.TokenOut,
+		INSERT INTO messages (id, session_id, role, content, reasoning, tool_call, tool_result, tokens_in, tokens_out, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		m.ID, m.SessionID, string(m.Role), m.Content, m.Reasoning, m.ToolCall, m.ToolRes, m.TokenIn, m.TokenOut,
 		m.CreatedAt.UTC().Format(time.RFC3339),
 	)
 	if err != nil {
@@ -33,7 +46,7 @@ func (r *MessageRepo) Create(ctx context.Context, m *session.Message) error {
 
 func (r *MessageRepo) ListBySession(ctx context.Context, sessionID string) ([]*session.Message, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, session_id, role, content, tool_call, tool_result, tokens_in, tokens_out, created_at
+		SELECT id, session_id, role, content, reasoning, tool_call, tool_result, tokens_in, tokens_out, created_at
 		FROM messages WHERE session_id = ? ORDER BY created_at ASC`, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("list messages: %w", err)
@@ -49,6 +62,14 @@ func (r *MessageRepo) ListBySession(ctx context.Context, sessionID string) ([]*s
 		messages = append(messages, m)
 	}
 	return messages, rows.Err()
+}
+
+func (r *MessageRepo) Delete(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, `DELETE FROM messages WHERE id = ?`, id)
+	if err != nil {
+		return fmt.Errorf("delete message: %w", err)
+	}
+	return nil
 }
 
 func (r *MessageRepo) DeleteBySession(ctx context.Context, sessionID string) error {
@@ -67,7 +88,7 @@ func (r *MessageRepo) CountBySession(ctx context.Context, sessionID string) (int
 
 func (r *MessageRepo) GetLastBySession(ctx context.Context, sessionID string) (*session.Message, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, session_id, role, content, tool_call, tool_result, tokens_in, tokens_out, created_at
+		SELECT id, session_id, role, content, reasoning, tool_call, tool_result, tokens_in, tokens_out, created_at
 		FROM messages WHERE session_id = ? ORDER BY created_at DESC LIMIT 1`, sessionID)
 
 	return scanMessage(row)
@@ -80,7 +101,7 @@ func scanMessage(s interface {
 	var msg session.Message
 	var role, createdAt string
 
-	err := s.Scan(&msg.ID, &msg.SessionID, &role, &msg.Content, &msg.ToolCall, &msg.ToolRes,
+	err := s.Scan(&msg.ID, &msg.SessionID, &role, &msg.Content, &msg.Reasoning, &msg.ToolCall, &msg.ToolRes,
 		&msg.TokenIn, &msg.TokenOut, &createdAt)
 	if err != nil {
 		if err == sql.ErrNoRows {

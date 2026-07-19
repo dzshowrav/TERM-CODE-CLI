@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const schemaVersion = 1
+const schemaVersion = 5
 
 var migrations = []struct {
 	version int
@@ -40,7 +40,6 @@ var migrations = []struct {
 			max_output     INTEGER NOT NULL DEFAULT 4096,
 			pricing_input  REAL NOT NULL DEFAULT 0.0,
 			pricing_output REAL NOT NULL DEFAULT 0.0,
-			is_local       INTEGER NOT NULL DEFAULT 0,
 			is_favorite    INTEGER NOT NULL DEFAULT 0,
 			enabled        INTEGER NOT NULL DEFAULT 1,
 			created_at     TEXT NOT NULL,
@@ -243,6 +242,106 @@ var migrations = []struct {
 			version INTEGER PRIMARY KEY,
 			applied_at TEXT NOT NULL
 		);
+		`,
+	},
+	{
+		version: 2,
+		sql: `
+		ALTER TABLE messages ADD COLUMN reasoning TEXT NOT NULL DEFAULT '';
+		`,
+	},
+	{
+		version: 3,
+		sql: `
+		CREATE TABLE IF NOT EXISTS branches (
+			id         TEXT PRIMARY KEY,
+			session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+			name       TEXT NOT NULL,
+			history    TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL
+		);
+		`,
+	},
+	{
+		version: 4,
+		sql: `
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_provider_insert
+		BEFORE INSERT ON sessions
+		WHEN NEW.provider_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: sessions.provider_id')
+			WHERE NOT EXISTS (SELECT 1 FROM providers WHERE id = NEW.provider_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_provider_update
+		BEFORE UPDATE OF provider_id ON sessions
+		WHEN NEW.provider_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: sessions.provider_id')
+			WHERE NOT EXISTS (SELECT 1 FROM providers WHERE id = NEW.provider_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_model_insert
+		BEFORE INSERT ON sessions
+		WHEN NEW.model_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: sessions.model_id')
+			WHERE NOT EXISTS (SELECT 1 FROM models WHERE id = NEW.model_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_model_update
+		BEFORE UPDATE OF model_id ON sessions
+		WHEN NEW.model_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: sessions.model_id')
+			WHERE NOT EXISTS (SELECT 1 FROM models WHERE id = NEW.model_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_provider_delete
+		BEFORE DELETE ON providers
+		BEGIN
+			UPDATE sessions SET provider_id = '' WHERE provider_id = OLD.id;
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_sessions_model_delete
+		BEFORE DELETE ON models
+		BEGIN
+			UPDATE sessions SET model_id = '' WHERE model_id = OLD.id;
+		END;
+		`,
+	},
+	{
+		version: 5,
+		sql: `
+		CREATE TRIGGER IF NOT EXISTS fk_conversations_session_insert
+		BEFORE INSERT ON conversations
+		WHEN NEW.session_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: conversations.session_id')
+			WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE id = NEW.session_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_conversations_session_update
+		BEFORE UPDATE OF session_id ON conversations
+		WHEN NEW.session_id != ''
+		BEGIN
+			SELECT RAISE(ABORT, 'FOREIGN KEY constraint failed: conversations.session_id')
+			WHERE NOT EXISTS (SELECT 1 FROM sessions WHERE id = NEW.session_id);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS fk_conversations_session_delete
+		BEFORE DELETE ON sessions
+		BEGIN
+			DELETE FROM conversations WHERE session_id = OLD.id;
+		END;
+
+		CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at);
+		CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+		CREATE INDEX IF NOT EXISTS idx_models_provider ON models(provider_id);
+		CREATE INDEX IF NOT EXISTS idx_workspaces_path ON workspaces(path);
+		CREATE INDEX IF NOT EXISTS idx_agents_default ON agents(is_default);
+		CREATE INDEX IF NOT EXISTS idx_providers_default ON providers(is_default);
 		`,
 	},
 }

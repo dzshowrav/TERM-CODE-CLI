@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"termcode/internal/application/util"
 )
 
 type EditOp struct {
@@ -46,7 +48,7 @@ func (s *EditService) Edit(path string, edits []EditOp) (*EditResult, error) {
 		if count == 0 {
 			return &EditResult{
 				Success: false,
-				Message: fmt.Sprintf("text not found in %s: %q", path, truncate(edit.OldStr, 50)),
+				Message: fmt.Sprintf("text not found in %s: %q", path, util.Truncate(edit.OldStr, 50)),
 			}, nil
 		}
 		content = strings.ReplaceAll(content, edit.OldStr, edit.NewStr)
@@ -62,11 +64,4 @@ func (s *EditService) Edit(path string, edits []EditOp) (*EditResult, error) {
 		Message: fmt.Sprintf("Applied %d changes to %s", totalChanges, abs),
 		Changes: totalChanges,
 	}, nil
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }

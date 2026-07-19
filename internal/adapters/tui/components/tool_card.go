@@ -8,6 +8,8 @@ import (
 
 	"github.com/alecthomas/chroma/v2/quick"
 	"github.com/charmbracelet/lipgloss"
+
+	"termcode/internal/application/util"
 )
 
 type ToolStatus string
@@ -24,24 +26,16 @@ const (
 )
 
 var (
-	toolBorderStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240"))
-	toolBorderRunning = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("39"))
-	toolBorderFailed = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("196"))
 	toolNameStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Bold(true)
-	toolArgStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
+	toolArgStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	toolOutputStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	toolErrorStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	toolDurationSty = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	toolLabelStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	toolActionStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Underline(true)
+	toolStatusSty   = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	toolPathStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Underline(true)
+	toolSepStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	spinnerFrames = []string{"◐", "◓", "◑", "◒"}
+	spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 )
 
 func toolStatusIcon(status ToolStatus, animFrame int) string {
@@ -49,14 +43,14 @@ func toolStatusIcon(status ToolStatus, animFrame int) string {
 	case ToolQueued:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render("○")
 	case ToolInitializing:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render("⚙")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("141")).Render("●")
 	case ToolConnecting:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("↗")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("●")
 	case ToolRunning:
 		frame := spinnerFrames[animFrame%len(spinnerFrames)]
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(frame)
 	case ToolCompleted:
-		return lipgloss.NewStyle().Foreground(lipgloss.Color("83")).Render("✓")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("83")).Render("●")
 	case ToolFailed:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("✗")
 	case ToolWaiting:
@@ -68,41 +62,18 @@ func toolStatusIcon(status ToolStatus, animFrame int) string {
 	}
 }
 
-func toolStatusColor(status ToolStatus) string {
-	switch status {
-	case ToolCompleted:
-		return "83"
-	case ToolRunning:
-		return "39"
-	case ToolWaiting, ToolQueued:
-		return "221"
-	case ToolInitializing:
-		return "141"
-	case ToolConnecting:
-		return "39"
-	case ToolFailed:
-		return "196"
-	case ToolCancelled:
-		return "245"
-	default:
-		return "245"
-	}
-}
-
 type ToolCard struct {
-	name        string
-	status      ToolStatus
-	args        string
-	output      string
-	errMsg      string
-	durationMs  int64
-	progressPct int
-	expanded    bool
-	width       int
-	label       string
-	focused     bool
-	animFrame   int
-	showAll     bool
+	name       string
+	status     ToolStatus
+	args       string
+	output     string
+	errMsg     string
+	durationMs int64
+	width      int
+	animFrame  int
+	showAll    bool
+	focused    bool
+	collapsed  bool
 }
 
 func NewToolCard(name string) *ToolCard {
@@ -137,19 +108,30 @@ func (c *ToolCard) SetDuration(ms int64) {
 	c.durationMs = ms
 }
 
-func (c *ToolCard) SetProgress(pct int) {
-	c.progressPct = pct
+func (c *ToolCard) SetFocused(v bool) {
+	c.focused = v
 }
 
 func (c *ToolCard) SetExpanded(v bool) {
-	c.expanded = v
+	c.collapsed = !v
 	if !v {
 		c.showAll = false
 	}
 }
 
-func (c *ToolCard) SetFocused(v bool) {
-	c.focused = v
+func (c *ToolCard) ToggleExpanded() {
+	c.collapsed = !c.collapsed
+	if c.collapsed {
+		c.showAll = false
+	}
+}
+
+func (c *ToolCard) ToggleShowAll() {
+	c.showAll = !c.showAll
+}
+
+func (c *ToolCard) Expanded() bool {
+	return !c.collapsed
 }
 
 func (c *ToolCard) SetAnimFrame(n int) {
@@ -158,25 +140,6 @@ func (c *ToolCard) SetAnimFrame(n int) {
 
 func (c *ToolCard) AnimFrame() int {
 	return c.animFrame
-}
-
-func (c *ToolCard) SetShowAll(v bool) {
-	c.showAll = v
-}
-
-func (c *ToolCard) ToggleShowAll() {
-	c.showAll = !c.showAll
-}
-
-func (c *ToolCard) ToggleExpanded() {
-	c.expanded = !c.expanded
-	if !c.expanded {
-		c.showAll = false
-	}
-}
-
-func (c *ToolCard) Expanded() bool {
-	return c.expanded
 }
 
 func (c *ToolCard) Name() string {
@@ -203,154 +166,149 @@ func (c *ToolCard) durationStr() string {
 }
 
 func (c *ToolCard) View() string {
-	innerW := c.width - 4
-	if innerW < 10 {
-		innerW = 10
-	}
+	var lines []string
 
 	icon := toolStatusIcon(c.status, c.animFrame)
-	color := toolStatusColor(c.status)
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color))
-
-	expandIcon := "▶"
-	if c.expanded {
-		expandIcon = "▼"
-	}
 
 	focusIndicator := ""
 	if c.focused {
 		focusIndicator = lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("▸") + " "
 	}
-	header := fmt.Sprintf("%s%s %s %s  %s",
-		focusIndicator,
-		lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render(expandIcon),
-		icon,
-		toolNameStyle.Render(c.name),
-		statusStyle.Render(string(c.status)),
-	)
+
+	name := c.name
+	parts := strings.Split(name, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	name = strings.Join(parts, "")
+
+	header := fmt.Sprintf("%s%s %s", focusIndicator, icon, toolNameStyle.Render(name))
+
+	if c.args != "" {
+		displayArgs := formatToolArgs(c.name, c.args)
+		argsTrimmed := util.Truncate(displayArgs, c.width-lipgloss.Width(header)-10)
+		header += fmt.Sprintf("(%s)", toolArgStyle.Render(argsTrimmed))
+	}
 
 	if c.durationMs > 0 {
 		header += fmt.Sprintf("  %s", toolDurationSty.Render(c.durationStr()))
 	}
 
-	var lines []string
 	lines = append(lines, header)
 
-	if c.expanded {
-		if c.args != "" && len(c.args) < 200 {
-			lines = append(lines, "")
-			lines = append(lines, toolLabelStyle.Render("Arguments")+" "+toolArgStyle.Render(truncateStr(c.args, innerW-12)))
-		}
-
-		if c.status == ToolRunning && c.progressPct > 0 {
-			lines = append(lines, "")
-			lines = append(lines, c.renderProgress(innerW))
-		}
-
-		if c.output != "" {
-			lines = append(lines, "")
-			lines = append(lines, toolLabelStyle.Render("Output"))
-			totalLines := c.OutputLines()
-			rawOutput := c.output
-			pretty := prettyPrintJSON(rawOutput)
-			if pretty != rawOutput {
-				rawOutput = pretty
-				totalLines = len(strings.Split(rawOutput, "\n"))
-			}
-			formatted := formatToolOutput(rawOutput)
-			var displayOutput string
-			if c.showAll {
-				displayOutput = formatted
-			} else {
-				displayOutput = truncateOutput(formatted, innerW, 15)
-			}
-			for _, line := range strings.Split(displayOutput, "\n") {
-				if strings.HasPrefix(line, "\033") {
-					lines = append(lines, "  "+line)
-				} else {
-					lines = append(lines, toolOutputStyle.Render("  "+line))
-				}
-			}
-			if totalLines > 15 {
-				if c.showAll {
-					lines = append(lines, toolActionStyle.Render("  ▼ Show Less"))
-				} else {
-					lines = append(lines, toolActionStyle.Render("  ▶ Show All"))
-				}
-			}
-		}
-
+	output := c.output
+	if output == "" {
 		if c.errMsg != "" {
-			lines = append(lines, "")
-			lines = append(lines, toolLabelStyle.Render("Error"))
-			stackLines, logLines, suggestionLines := categorizeError(c.errMsg)
-			if len(stackLines) > 0 || len(logLines) > 0 || len(suggestionLines) > 0 {
-				if len(logLines) > 0 {
-					lines = append(lines, toolLabelStyle.Render("  Logs"))
-					for _, l := range logLines {
-						lines = append(lines, toolErrorStyle.Render("    "+l))
-					}
-				}
-				if len(stackLines) > 0 {
-					lines = append(lines, toolLabelStyle.Render("  Stack"))
-					for _, l := range stackLines {
-						lines = append(lines, toolErrorStyle.Render("    "+l))
-					}
-				}
-				if len(suggestionLines) > 0 {
-					lines = append(lines, toolLabelStyle.Render("  Suggestion"))
-					for _, l := range suggestionLines {
-						lines = append(lines, lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Render("    "+l))
-					}
-				}
-			} else {
-				lines = append(lines, toolErrorStyle.Render("  "+c.errMsg))
-			}
-		}
-
-		if c.status == ToolFailed {
-			lines = append(lines, "")
-			lines = append(lines, toolActionStyle.Render("Retry"))
+			output = c.errMsg
+		} else if c.collapsed {
+			return strings.Join(lines, "\n")
+		} else {
+			return strings.Join(lines, "\n")
 		}
 	}
 
-	rendered := strings.Join(lines, "\n")
-
-	var border lipgloss.Style
-	switch c.status {
-	case ToolRunning:
-		border = toolBorderRunning
-	case ToolFailed:
-		border = toolBorderFailed
-	default:
-		border = toolBorderStyle
+	pretty := prettyPrintJSON(output)
+	if pretty != output {
+		output = pretty
 	}
 
-	if c.focused {
-		border = border.BorderForeground(lipgloss.Color("39"))
+	formatted := FormatToolOutput(output)
+	outputLines := strings.Split(formatted, "\n")
+
+	if c.collapsed {
+		summary := c.generateSummary(outputLines)
+		if summary != "" {
+			truncated := util.Truncate(summary, c.width-6)
+			lines = append(lines, "  "+lipgloss.NewStyle().Foreground(lipgloss.Color("221")).Bold(true).Render("⎿")+"  "+toolOutputStyle.Render(truncated))
+		}
+		return strings.Join(lines, "\n")
 	}
 
-	result := border.Width(innerW).Render(rendered)
-	return result
+	total := len(outputLines)
+	maxLines := 15
+	if total > maxLines && !c.showAll {
+		outputLines = outputLines[:maxLines]
+	}
+
+	indent := toolSepStyle.Render("  ")
+	for _, line := range outputLines {
+		rendered := toolOutputStyle.Render(indent + line)
+		lines = append(lines, rendered)
+	}
+
+	if c.errMsg != "" && c.output == "" {
+		for _, line := range strings.Split(c.errMsg, "\n") {
+			lines = append(lines, toolErrorStyle.Render("  "+line))
+		}
+	}
+
+	if total > maxLines {
+		if c.showAll {
+			lines = append(lines, toolArgStyle.Render("  \u25bc show less"))
+		} else {
+			lines = append(lines, toolArgStyle.Render(fmt.Sprintf("  \u25bc %d more lines", total-maxLines)))
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
-func (c *ToolCard) renderProgress(w int) string {
-	barWidth := w - 20
-	if barWidth < 5 {
-		barWidth = 5
+func (c *ToolCard) generateSummary(lines []string) string {
+	if c.errMsg != "" {
+		return "Failed: " + c.firstMeaningfulLine(strings.Split(c.errMsg, "\n"))
 	}
-	filled := (c.progressPct * barWidth) / 100
-	if filled > barWidth {
-		filled = barWidth
+	if c.output == "" {
+		return ""
 	}
-	empty := barWidth - filled
-	bar := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render(strings.Repeat("■", filled)) +
-		lipgloss.NewStyle().Foreground(lipgloss.Color("236")).Render(strings.Repeat("■", empty))
-	return fmt.Sprintf("  %s  %d%%", bar, c.progressPct)
+
+	name := strings.ToLower(c.name)
+	if strings.Contains(name, "read") {
+		return fmt.Sprintf("Read %d lines", len(lines))
+	} else if strings.Contains(name, "list") && strings.Contains(name, "dir") {
+		var files, dirs int
+		var parsed []map[string]any
+		if err := json.Unmarshal([]byte(c.output), &parsed); err == nil {
+			for _, item := range parsed {
+				if isDir, ok := item["is_dir"].(bool); ok && isDir {
+					dirs++
+				} else if typ, ok := item["type"].(string); ok && typ == "dir" {
+					dirs++
+				} else {
+					files++
+				}
+			}
+			return fmt.Sprintf("%d files, %d directories", files, dirs)
+		}
+		return fmt.Sprintf("%d items", len(lines))
+	} else if strings.Contains(name, "search") || strings.Contains(name, "glob") || strings.Contains(name, "grep") {
+		var parsed []map[string]any
+		if err := json.Unmarshal([]byte(c.output), &parsed); err == nil {
+			return fmt.Sprintf("Found %d results", len(parsed))
+		}
+		return fmt.Sprintf("Found %d results", len(lines))
+	}
+
+	return c.firstMeaningfulLine(lines)
+}
+
+func (c *ToolCard) firstMeaningfulLine(lines []string) string {
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
+		}
+	}
+	return ""
 }
 
 func (c *ToolCard) Lines() []string {
 	return strings.Split(c.View(), "\n")
+}
+
+func (c *ToolCard) Output() string {
+	return c.output
 }
 
 func (c *ToolCard) OutputLines() int {
@@ -360,17 +318,61 @@ func (c *ToolCard) OutputLines() int {
 	return len(strings.Split(c.output, "\n"))
 }
 
-func truncateOutput(s string, maxW, maxLines int) string {
+func FormatToolOutput(s string) string {
 	lines := strings.Split(s, "\n")
-	if len(lines) > maxLines {
-		lines = lines[:maxLines]
-	}
-	for i, line := range lines {
-		if len(line) > maxW {
-			lines[i] = line[:maxW-3] + "..."
+	var buf bytes.Buffer
+	inCode := false
+	var codeLang string
+	var codeBuf strings.Builder
+
+	flushCode := func() {
+		if codeBuf.Len() == 0 {
+			return
 		}
+		highlighted := formatCodeBlock(codeBuf.String(), codeLang)
+		buf.WriteString(highlighted)
+		if !strings.HasSuffix(highlighted, "\n") {
+			buf.WriteString("\n")
+		}
+		codeBuf.Reset()
+		codeLang = ""
 	}
-	return strings.Join(lines, "\n")
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "```") {
+			if inCode {
+				flushCode()
+				buf.WriteString("\n")
+			} else {
+				flushCode()
+				inCode = true
+				codeLang = strings.TrimPrefix(trimmed, "```")
+			}
+			inCode = !inCode
+			continue
+		}
+
+		if inCode {
+			codeBuf.WriteString(line)
+			codeBuf.WriteString("\n")
+			continue
+		}
+
+		if IsDiffLine(line) {
+			buf.WriteString(ColorizeDiff(line))
+			buf.WriteString("\n")
+			continue
+		}
+
+		formatted := formatMarkdownLine(line)
+		buf.WriteString(formatted)
+		buf.WriteString("\n")
+	}
+
+	flushCode()
+	return buf.String()
 }
 
 func formatCodeBlock(code, lang string) string {
@@ -385,7 +387,7 @@ func formatCodeBlock(code, lang string) string {
 	return highlighted.String()
 }
 
-func colorizeDiff(line string) string {
+func ColorizeDiff(line string) string {
 	if len(line) == 0 {
 		return line
 	}
@@ -404,7 +406,7 @@ func colorizeDiff(line string) string {
 	return line
 }
 
-func isDiffLine(line string) bool {
+func IsDiffLine(line string) bool {
 	if len(line) == 0 {
 		return false
 	}
@@ -418,114 +420,6 @@ func isDiffLine(line string) bool {
 		return true
 	}
 	return false
-}
-
-func isTableRow(line string) bool {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return false
-	}
-	if trimmed[0] != '|' {
-		return false
-	}
-	pipes := strings.Count(trimmed, "|")
-	return pipes >= 2
-}
-
-func formatTable(content string) string {
-	lines := strings.Split(content, "\n")
-	if len(lines) < 2 {
-		return content
-	}
-
-	var rows [][]string
-	var separators []int
-	for i, line := range lines {
-		if !isTableRow(line) {
-			continue
-		}
-		cells := splitTableRow(line)
-		if i == 1 && strings.Count(strings.TrimSpace(lines[1]), "-") > 0 {
-			separators = make([]int, len(cells))
-			for j, c := range cells {
-				separators[j] = len(c)
-			}
-			continue
-		}
-		rows = append(rows, cells)
-	}
-
-	if len(rows) == 0 {
-		return content
-	}
-
-	numCols := 0
-	for _, row := range rows {
-		if len(row) > numCols {
-			numCols = len(row)
-		}
-	}
-	if numCols == 0 {
-		return content
-	}
-
-	if separators == nil || len(separators) != numCols {
-		separators = make([]int, numCols)
-		for _, row := range rows {
-			for j, cell := range row {
-				clean := strings.TrimSpace(cell)
-				if len(clean) > separators[j] {
-					separators[j] = len(clean)
-				}
-			}
-		}
-	}
-
-	var buf bytes.Buffer
-	for _, row := range rows {
-		for j, cell := range row {
-			if j >= numCols {
-				break
-			}
-			clean := strings.TrimSpace(cell)
-			width := separators[j]
-			if j == len(row)-1 {
-				buf.WriteString(fmt.Sprintf("  %s", clean))
-			} else {
-				buf.WriteString(fmt.Sprintf("  %-*s", width, clean))
-			}
-		}
-		buf.WriteString("\n")
-	}
-	return buf.String()
-}
-
-func splitTableRow(line string) []string {
-	trimmed := strings.TrimSpace(line)
-	if len(trimmed) < 2 {
-		return nil
-	}
-	inner := trimmed
-	if inner[0] == '|' {
-		inner = inner[1:]
-	}
-	if len(inner) > 0 && inner[len(inner)-1] == '|' {
-		inner = inner[:len(inner)-1]
-	}
-	var cells []string
-	current := strings.Builder{}
-	for _, ch := range inner {
-		if ch == '|' {
-			cells = append(cells, current.String())
-			current.Reset()
-		} else {
-			current.WriteRune(ch)
-		}
-	}
-	if current.Len() > 0 {
-		cells = append(cells, current.String())
-	}
-	return cells
 }
 
 func formatMarkdownLine(line string) string {
@@ -560,123 +454,54 @@ func formatMarkdownLine(line string) string {
 		}
 	}
 
-	if strings.HasPrefix(trimmed, "---") || strings.HasPrefix(trimmed, "***") || strings.HasPrefix(trimmed, "___") {
-		sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
-		return sepStyle.Render(strings.Repeat("─", 40))
-	}
-
 	if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
 		bullet := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Render("•")
 		return "  " + bullet + " " + strings.TrimPrefix(strings.TrimPrefix(trimmed, "- "), "* ")
 	}
 
-	if strings.HasPrefix(trimmed, "1.") || strings.HasPrefix(trimmed, "1)") {
-		numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		return "  " + numStyle.Render("1.") + " " + strings.TrimSpace(trimmed[2:])
-	}
-
 	return line
 }
 
-func formatToolOutput(s string) string {
-	lines := strings.Split(s, "\n")
-	var buf bytes.Buffer
-	inCode := false
-	var codeLang string
-	var codeBuf strings.Builder
-
-	flushCode := func() {
-		if codeBuf.Len() == 0 {
-			return
-		}
-		highlighted := formatCodeBlock(codeBuf.String(), codeLang)
-		buf.WriteString(highlighted)
-		if !strings.HasSuffix(highlighted, "\n") {
-			buf.WriteString("\n")
-		}
-		codeBuf.Reset()
-		codeLang = ""
+func formatToolArgs(toolName, args string) string {
+	if args == "" {
+		return args
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(args), &parsed); err != nil {
+		return args
 	}
 
-	diffLines := 0
-	tableLines := 0
+	primaryKeys := []string{"path", "absolutepath", "query", "command", "file", "dir", "url", "targetfile", "searchpath"}
 
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-
-		if strings.HasPrefix(trimmed, "```") {
-			if inCode {
-				flushCode()
-				buf.WriteString("\n")
-			} else {
-				flushCode()
-				inCode = true
-				codeLang = strings.TrimPrefix(trimmed, "```")
-			}
-			inCode = !inCode
-			continue
+	// Fast path case-sensitive
+	for _, k := range primaryKeys {
+		if v, ok := parsed[k].(string); ok && v != "" {
+			return v
 		}
+	}
 
-		if inCode {
-			codeBuf.WriteString(line)
-			codeBuf.WriteString("\n")
-			continue
-		}
-
-		if isDiffLine(line) {
-			diffLines++
-			if diffLines >= 3 {
-				buf.WriteString(colorizeDiff(line))
-				buf.WriteString("\n")
-				continue
-			}
-		} else {
-			diffLines = 0
-		}
-
-		if isTableRow(line) {
-			tableLines++
-		} else {
-			if tableLines > 0 {
-				tableLines = 0
+	// Slow path case-insensitive
+	for k, v := range parsed {
+		kLower := strings.ToLower(k)
+		for _, pk := range primaryKeys {
+			if kLower == pk {
+				if s, ok := v.(string); ok && s != "" {
+					return s
+				}
 			}
 		}
-
-		formatted := formatMarkdownLine(line)
-		buf.WriteString(formatted)
-		buf.WriteString("\n")
 	}
 
-	flushCode()
-	result := buf.String()
-
-	if tableLines > 0 {
-		result = formatTable(result)
-	}
-
-	return result
-}
-
-func categorizeError(err string) (stack, logs, suggestions []string) {
-	lines := strings.Split(err, "\n")
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			continue
-		}
-		low := strings.ToLower(trimmed)
-		if strings.Contains(low, "suggestion:") || strings.Contains(low, "hint:") || strings.Contains(low, "try ") {
-			suggestions = append(suggestions, trimmed)
-		} else if matched, _ := fmt.Sscanf(trimmed, "%s.go:%d", new(string), new(int)); matched == 2 || strings.Contains(trimmed, ".go:") {
-			stack = append(stack, trimmed)
-		} else {
-			logs = append(logs, trimmed)
+	parts := make([]string, 0, len(parsed))
+	for _, v := range parsed {
+		if s, ok := v.(string); ok {
+			parts = append(parts, s)
 		}
 	}
-	if len(suggestions) == 0 && len(stack) == 0 && len(logs) == 0 {
-		logs = append(logs, err)
+	if len(parts) == 0 {
+		return args
 	}
-	return
+	return strings.Join(parts, ", ")
 }
 
 func prettyPrintJSON(s string) string {
@@ -696,12 +521,4 @@ func prettyPrintJSON(s string) string {
 		return s
 	}
 	return string(formatted)
-}
-
-func truncateStr(s string, maxLen int) string {
-	runes := []rune(s)
-	if len(runes) <= maxLen {
-		return s
-	}
-	return string(runes[:maxLen-3]) + "..."
 }

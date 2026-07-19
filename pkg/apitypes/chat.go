@@ -1,10 +1,19 @@
 package apitypes
 
 type ChatMessage struct {
-	Role       string     `json:"role"`
-	Content    string     `json:"content"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
+	Role             string     `json:"role"`
+	Content          string     `json:"content"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	Reasoning        string     `json:"reasoning,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string     `json:"tool_call_id,omitempty"`
+}
+
+func (m ChatMessage) ReasoningText() string {
+	if m.ReasoningContent != "" {
+		return m.ReasoningContent
+	}
+	return m.Reasoning
 }
 
 type ToolCall struct {
@@ -37,9 +46,18 @@ type ChatResponse struct {
 }
 
 type Choice struct {
-	Index        int         `json:"index"`
-	Message      ChatMessage `json:"message"`
-	FinishReason string      `json:"finish_reason"`
+	Index            int         `json:"index"`
+	Message          ChatMessage `json:"message"`
+	FinishReason     string      `json:"finish_reason"`
+	ReasoningContent string      `json:"reasoning_content,omitempty"`
+	Reasoning        string      `json:"reasoning,omitempty"`
+}
+
+func (c Choice) ReasoningText() string {
+	if c.ReasoningContent != "" {
+		return c.ReasoningContent
+	}
+	return c.Reasoning
 }
 
 type Usage struct {
@@ -63,7 +81,16 @@ type StreamChoice struct {
 }
 
 type StreamDelta struct {
-	Role      string     `json:"role,omitempty"`
-	Content   string     `json:"content,omitempty"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
+	Role             string     `json:"role,omitempty"`
+	Content          string     `json:"content,omitempty"`
+	ReasoningContent string     `json:"reasoning_content,omitempty"`
+	Reasoning        string     `json:"reasoning,omitempty"`
+	ToolCalls        []ToolCall `json:"tool_calls,omitempty"`
+}
+
+func (d StreamDelta) ReasoningText() string {
+	if d.ReasoningContent != "" {
+		return d.ReasoningContent
+	}
+	return d.Reasoning
 }

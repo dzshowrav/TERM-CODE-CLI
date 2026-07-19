@@ -12,6 +12,7 @@ const (
 	StatusActive   Status = "active"
 	StatusArchived Status = "archived"
 	StatusDeleted  Status = "deleted"
+	StatusPinned   Status = "pinned"
 )
 
 type Session struct {

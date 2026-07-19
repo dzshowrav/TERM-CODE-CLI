@@ -42,7 +42,6 @@ type Model struct {
 	MaxOutput    int          `json:"max_output"`
 	PricingInput float64      `json:"pricing_input"`
 	PricingOut   float64      `json:"pricing_output"`
-	IsLocal      bool         `json:"is_local"`
 	IsFavorite   bool         `json:"is_favorite"`
 	Enabled      bool         `json:"enabled"`
 	CreatedAt    time.Time    `json:"created_at"`

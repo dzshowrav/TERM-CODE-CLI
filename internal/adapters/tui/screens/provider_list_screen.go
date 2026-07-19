@@ -31,8 +31,14 @@ type ProviderListScreen struct {
 	width     int
 	height    int
 	providers []ProviderItem
-	done      bool
+	cursor    int
 	scroll    int
+	done      bool
+	result    string
+	onDelete  func(name string) string
+	onSelect  func(name string) string
+	onEdit    func(name string) string
+	onRefresh func()
 }
 
 func NewProviderListScreen() *ProviderListScreen {
@@ -45,7 +51,36 @@ func NewProviderListScreen() *ProviderListScreen {
 func (s *ProviderListScreen) SetSize(w, h int) {
 	s.width = w
 	s.height = h
+	if s.onRefresh != nil {
+		s.onRefresh()
+	}
 }
+
+func (s *ProviderListScreen) SetProviders(providers []ProviderItem) {
+	s.providers = providers
+	if s.cursor >= len(s.providers) {
+		s.cursor = len(s.providers) - 1
+	}
+}
+
+func (s *ProviderListScreen) OnDelete(fn func(name string) string) {
+	s.onDelete = fn
+}
+
+func (s *ProviderListScreen) OnSelect(fn func(name string) string) {
+	s.onSelect = fn
+}
+
+func (s *ProviderListScreen) OnEdit(fn func(name string) string) {
+	s.onEdit = fn
+}
+
+func (s *ProviderListScreen) OnRefresh(fn func()) {
+	s.onRefresh = fn
+}
+
+func (s *ProviderListScreen) Done() bool     { return s.done }
+func (s *ProviderListScreen) Result() string { return s.result }
 
 func (s *ProviderListScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -53,38 +88,90 @@ func (s *ProviderListScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
 		switch msg.String() {
 		case "esc":
 			s.done = true
-		case "up":
-			if s.scroll > 0 {
-				s.scroll--
+		case "enter":
+			if len(s.providers) > 0 && s.cursor >= 0 && s.cursor < len(s.providers) {
+				p := s.providers[s.cursor]
+				if s.onSelect != nil {
+					s.result = s.onSelect(p.Name)
+				} else {
+					s.result = fmt.Sprintf("Selected provider '%s'", p.Name)
+				}
+				s.done = true
 			}
-		case "down":
-			if s.scroll < len(s.providers)-1 {
-				s.scroll++
+		case "up", "k":
+			if s.cursor > 0 {
+				s.cursor--
+				if s.cursor < s.scroll {
+					s.scroll = s.cursor
+				}
+			}
+		case "down", "j":
+			if s.cursor < len(s.providers)-1 {
+				s.cursor++
+				maxVis := s.height - 10
+				if maxVis < 1 {
+					maxVis = 1
+				}
+				if s.cursor >= s.scroll+maxVis {
+					s.scroll = s.cursor - maxVis + 1
+				}
+			}
+		case "d", "D":
+			if len(s.providers) > 0 && s.cursor >= 0 && s.cursor < len(s.providers) {
+				p := s.providers[s.cursor]
+				if s.onDelete != nil {
+					s.onDelete(p.Name)
+				}
+				s.providers = append(s.providers[:s.cursor], s.providers[s.cursor+1:]...)
+				if s.cursor >= len(s.providers) {
+					s.cursor = max(0, len(s.providers)-1)
+				}
+				if s.scroll >= len(s.providers) {
+					s.scroll = max(0, len(s.providers)-1)
+				}
+			}
+		case "e", "E":
+			if len(s.providers) > 0 && s.cursor >= 0 && s.cursor < len(s.providers) {
+				p := s.providers[s.cursor]
+				if s.onEdit != nil {
+					s.result = s.onEdit(p.Name)
+				}
 			}
 		}
 	}
 	return s, nil
 }
 
-func (s *ProviderListScreen) Done() bool     { return s.done }
-func (s *ProviderListScreen) Result() string { return "" }
-
-func (s *ProviderListScreen) SetProviders(providers []ProviderItem) {
-	s.providers = providers
-}
-
 func (s *ProviderListScreen) View() string {
-	header := styles.H1.Render("Provider Management")
-	sep := styles.SeparatorLine(s.width)
+	innerW := s.width - 2
+
+	title := fmt.Sprintf("%-*s%s", innerW-4, "Provider Management", "esc")
 
 	if len(s.providers) == 0 {
-		empty := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No providers configured.")
-		hint := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Render("Use /provider add to add one.")
-		return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s\n%s", header, sep, empty, hint))
+		body := fmt.Sprintf("%s\n%s\n%s",
+			title,
+			styles.DialogSep(innerW),
+			styles.HintStyle.Render("No providers configured."),
+		)
+		return styles.DialogBox(s.width, body)
 	}
 
-	var lines []string
-	for _, p := range s.providers {
+	maxVis := s.height - 10
+	if maxVis < 1 {
+		maxVis = 1
+	}
+	if s.scroll+maxVis > len(s.providers) {
+		s.scroll = max(0, len(s.providers)-maxVis)
+	}
+	end := min(s.scroll+maxVis, len(s.providers))
+
+	var bodyLines []string
+	bodyLines = append(bodyLines, title)
+	bodyLines = append(bodyLines, styles.DialogSep(innerW))
+	bodyLines = append(bodyLines, "")
+
+	for i := s.scroll; i < end; i++ {
+		p := s.providers[i]
 		icon := provDisconn
 		switch p.Status {
 		case "connected":
@@ -98,15 +185,45 @@ func (s *ProviderListScreen) View() string {
 			active = provDefStyle
 		}
 
+		cursor := "  "
+		if i == s.cursor {
+			cursor = styles.Active.Render("> ")
+		}
+
 		latency := ""
 		if p.Latency > 0 {
 			latency = fmt.Sprintf(" %dms", p.Latency)
 		}
 
-		lines = append(lines, fmt.Sprintf(" %s %s%s", icon, provNameStyle.Render(p.Name), active))
-		lines = append(lines, fmt.Sprintf("   %s%s", provURLStyle.Render(p.URL), latency))
-		lines = append(lines, "")
+		urlStr := p.URL
+		urlMax := innerW - 10
+		if len([]rune(urlStr)) > urlMax {
+			urlStr = string([]rune(urlStr)[:urlMax]) + "..."
+		}
+
+		nameStr := p.Name
+		nameMax := innerW - 8
+		if len([]rune(nameStr)) > nameMax {
+			nameStr = string([]rune(nameStr)[:nameMax]) + "..."
+		}
+
+		bodyLines = append(bodyLines, fmt.Sprintf(" %s%s%s%s", cursor, icon, provNameStyle.Render(nameStr), active))
+		bodyLines = append(bodyLines, fmt.Sprintf("    %s%s", provURLStyle.Render(urlStr), latency))
+		bodyLines = append(bodyLines, "")
 	}
 
-	return styles.Content(s.width, fmt.Sprintf("%s\n%s\n%s", header, sep, strings.Join(lines, "\n")))
+	if s.scroll > 0 {
+		bodyLines = append(bodyLines, fmt.Sprintf("  %s", styles.HintStyle.Render(fmt.Sprintf("↑ %d more", s.scroll))))
+	}
+	if end < len(s.providers) {
+		remaining := len(s.providers) - end
+		bodyLines = append(bodyLines, fmt.Sprintf("  %s", styles.HintStyle.Render(fmt.Sprintf("↓ %d more", remaining))))
+	}
+
+	bodyLines = append(bodyLines, "")
+	hintText := "esc: Close  ↵: Select  e: Edit  d: Delete"
+	bodyLines = append(bodyLines, fmt.Sprintf("%*s", innerW, styles.HintStyle.Render(hintText)))
+
+	body := strings.Join(bodyLines, "\n")
+	return styles.DialogBox(s.width, body)
 }

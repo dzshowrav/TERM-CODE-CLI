@@ -1,3 +1,5 @@
+// Package stream is deprecated and not wired into the application.
+// Functionality is superseded by conversation.Service.converseStream().
 package stream
 
 import (
@@ -10,7 +12,7 @@ import (
 	"termcode/pkg/apitypes"
 )
 
-type ChunkHandler func(content string, done bool)
+type ChunkHandler func(content string, reasoning bool, done bool)
 
 type Handler struct {
 	adapter *llm.OpenAIAdapter
@@ -44,8 +46,18 @@ func (h *Handler) Stream(ctx context.Context, req *apitypes.ChatRequest, onChunk
 			}
 
 			for _, choice := range chunk.Choices {
+				if onChunk == nil {
+					continue
+				}
+
+				reasoning := choice.Delta.ReasoningText()
+				if reasoning != "" {
+					onChunk(reasoning, true, false)
+				}
+
 				content := choice.Delta.Content
-				if content == "" {
+				done := choice.FinishReason != ""
+				if content == "" && !done {
 					continue
 				}
 
@@ -54,9 +66,7 @@ func (h *Handler) Stream(ctx context.Context, req *apitypes.ChatRequest, onChunk
 				tokenCount := estimateTokens(content)
 				h.tracker.TrackOutput(tokenCount)
 
-				if onChunk != nil {
-					onChunk(content, choice.FinishReason != "")
-				}
+				onChunk(content, false, done)
 			}
 
 			if len(chunk.Choices) > 0 && chunk.Choices[0].FinishReason != "" {

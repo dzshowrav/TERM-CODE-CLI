@@ -63,3 +63,23 @@ func (s *Service) List(ctx context.Context) ([]string, error) {
 
 	return backups, nil
 }
+
+func (s *Service) Restore(ctx context.Context, backupPath string) error {
+	src, err := os.Open(backupPath)
+	if err != nil {
+		return fmt.Errorf("open backup: %w", err)
+	}
+	defer src.Close()
+
+	dst, err := os.Create(s.dbPath)
+	if err != nil {
+		return fmt.Errorf("create db: %w", err)
+	}
+	defer dst.Close()
+
+	if _, err := io.Copy(dst, src); err != nil {
+		return fmt.Errorf("copy: %w", err)
+	}
+
+	return nil
+}

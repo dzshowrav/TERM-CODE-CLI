@@ -21,6 +21,8 @@ type Plugin struct {
 	Author      string    `json:"author,omitempty"`
 	Description string    `json:"description,omitempty"`
 	Path        string    `json:"path,omitempty"`
+	FilePath    string    `json:"file_path,omitempty"`
+	EntryPoint  string    `json:"entry_point,omitempty"`
 	Status      Status    `json:"status"`
 	Enabled     bool      `json:"enabled"`
 	CreatedAt   time.Time `json:"created_at"`

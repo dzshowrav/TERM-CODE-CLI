@@ -70,6 +70,9 @@ func (s *ModelAddScreen) Update(msg tea.Msg) (DialogScreen, tea.Cmd) {
 					s.result = s.onSubmit(s.modelID, s.displayName, s.provider, ctx, maxOut)
 				}
 				s.done = true
+			} else if s.focusField == 6 {
+				s.done = true
+				s.result = ""
 			}
 
 		case "tab", "down":
@@ -160,34 +163,27 @@ func (s *ModelAddScreen) View() string {
 
 	for i, f := range fields {
 		val := f.value
+		if val == "" && i != s.focusField {
+			val = formHintStyle.Render(f.hint)
+		}
 		if i == s.focusField {
 			val += "█"
-		}
-		if val == "" || val == "█" {
-			val = formHintStyle.Render(f.hint)
 		}
 		fieldLine := fmt.Sprintf(" %s:  %s", formLabelStyle.Render(f.label), formInputStyle.Render(val))
 		lines = append(lines, fieldLine)
 		lines = append(lines, sep)
 	}
 
-	saveBtn := "  "
+	saveBtn := formBtnNormal.Render("[ Save ]")
+	cancelBtn := formBtnNormal.Render("[ Cancel ]")
 	if s.focusField == 5 {
-		saveBtn += formBtnActive.Render("[ Save ]")
-	} else {
-		saveBtn += formBtnNormal.Render("[ Save ]")
+		saveBtn = formBtnActive.Render("[ Save ]")
 	}
-	cancelBtn := ""
 	if s.focusField == 6 {
-		cancelBtn += formBtnActive.Render("[ Cancel ]")
-	} else {
-		cancelBtn += formBtnNormal.Render("[ Cancel ]")
+		cancelBtn = formBtnActive.Render("[ Cancel ]")
 	}
-	btnPad := innerWidth - lipgloss.Width(saveBtn) - lipgloss.Width(cancelBtn)
-	if btnPad < 1 {
-		btnPad = 1
-	}
-	btnLine := saveBtn + strings.Repeat(" ", btnPad) + cancelBtn
+	btnLine := lipgloss.JoinHorizontal(lipgloss.Center, saveBtn, cancelBtn)
+	btnLine = lipgloss.NewStyle().Width(innerWidth).Align(lipgloss.Center).Render(btnLine)
 
 	lines = append(lines, "")
 	lines = append(lines, btnLine)

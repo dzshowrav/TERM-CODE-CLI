@@ -2,6 +2,8 @@ package git
 
 import (
 	"fmt"
+	"io"
+	"strings"
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
@@ -39,6 +41,7 @@ type FileDiff struct {
 	Name    string `json:"name"`
 	Added   int    `json:"added"`
 	Removed int    `json:"removed"`
+	Content string `json:"content,omitempty"`
 }
 
 func NewService() *Service {
@@ -190,23 +193,107 @@ func (s *Service) Diff(repo *gogit.Repository) (*DiffResult, error) {
 		return nil, fmt.Errorf("status: %w", err)
 	}
 
+	headRef, err := repo.Head()
+	if err != nil {
+		return nil, fmt.Errorf("head: %w", err)
+	}
+	headCommit, err := repo.CommitObject(headRef.Hash())
+	if err != nil {
+		return nil, fmt.Errorf("commit: %w", err)
+	}
+	headTree, err := headCommit.Tree()
+	if err != nil {
+		return nil, fmt.Errorf("tree: %w", err)
+	}
+
 	result := &DiffResult{Files: []FileDiff{}}
 
 	for path, st := range status {
 		if st.Worktree == gogit.Unmodified && st.Staging == gogit.Unmodified {
 			continue
 		}
+
 		fd := FileDiff{Name: path}
-		if st.Worktree == gogit.Modified || st.Staging == gogit.Modified {
+
+		var oldContent, newContent string
+
+		headFile, err := headTree.File(path)
+		if err == nil {
+			oldContent, _ = headFile.Contents()
+		}
+
+		switch st.Worktree {
+		case gogit.Modified:
 			fd.Added = 1
-		}
-		if st.Worktree == gogit.Deleted || st.Staging == gogit.Deleted {
+			data, err := wt.Filesystem.Open(path)
+			if err == nil {
+				buf := new(strings.Builder)
+				_, _ = io.Copy(buf, data)
+				newContent = buf.String()
+				data.Close()
+			}
+		case gogit.Added, gogit.Untracked:
+			fd.Added = 1
+			data, err := wt.Filesystem.Open(path)
+			if err == nil {
+				buf := new(strings.Builder)
+				_, _ = io.Copy(buf, data)
+				newContent = buf.String()
+				data.Close()
+			}
+		case gogit.Deleted:
 			fd.Removed = 1
+			// oldContent is already set from HEAD; newContent stays empty
 		}
+
+		if st.Staging != gogit.Unmodified {
+			if fd.Added == 0 {
+				fd.Added = 1
+			}
+		}
+
+		fd.Content = simpleUnifiedDiff(path, oldContent, newContent)
 		result.Files = append(result.Files, fd)
 	}
 
 	return result, nil
+}
+
+func simpleUnifiedDiff(path, oldContent, newContent string) string {
+	var b strings.Builder
+	oldLines := strings.Split(oldContent, "\n")
+	newLines := strings.Split(newContent, "\n")
+
+	if oldContent == "" && newContent == "" {
+		return ""
+	}
+
+	b.WriteString(fmt.Sprintf("--- a/%s\n", path))
+	b.WriteString(fmt.Sprintf("+++ b/%s\n", path))
+
+	maxLen := len(oldLines)
+	if len(newLines) > maxLen {
+		maxLen = len(newLines)
+	}
+
+	b.WriteString(fmt.Sprintf("@@ -1,%d +1,%d @@\n", len(oldLines), len(newLines)))
+
+	for i := 0; i < maxLen; i++ {
+		if i < len(oldLines) && i < len(newLines) {
+			if oldLines[i] == newLines[i] {
+				b.WriteString(" " + oldLines[i] + "\n")
+			} else {
+				b.WriteString("-" + oldLines[i] + "\n")
+				b.WriteString("+" + newLines[i] + "\n")
+			}
+		} else if i < len(oldLines) {
+			b.WriteString("-" + oldLines[i] + "\n")
+		} else if i < len(newLines) {
+			b.WriteString("+" + newLines[i] + "\n")
+		}
+	}
+
+	return b.String()
 }
 
 func (s *Service) Branches(repo *gogit.Repository) ([]string, error) {

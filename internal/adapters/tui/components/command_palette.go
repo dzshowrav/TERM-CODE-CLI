@@ -14,14 +14,14 @@ type CommandEntry struct {
 
 var DefaultCommands = []CommandEntry{
 	{Command: "help", Description: "Show available commands"},
-	{Command: "provider list", Description: "List configured providers"},
+	{Command: "about", Description: "Show about TermCode"},
+	{Command: "network", Description: "Show network status"},
+	{Command: "providers", Description: "List, select, edit, delete providers"},
 	{Command: "provider add", Description: "Add a new provider"},
-	{Command: "provider select", Description: "Select active provider"},
 	{Command: "provider sync", Description: "Sync models from provider"},
 	{Command: "models", Description: "List & select models"},
 	{Command: "addmodel", Description: "Add a custom model"},
-	{Command: "agent list", Description: "List available agents"},
-	{Command: "agent select", Description: "Select active agent"},
+	{Command: "agents", Description: "List & select agents"},
 	{Command: "workspace", Description: "Show/set workspace path"},
 	{Command: "sessions list", Description: "List saved sessions"},
 	{Command: "sessions new", Description: "Start a new session"},
@@ -94,6 +94,34 @@ func (p *CommandPalette) Hide() {
 	p.visible = false
 }
 
+func fuzzyScore(input, target string) int {
+	input = strings.ToLower(input)
+	target = strings.ToLower(target)
+
+	if strings.Contains(target, input) {
+		return 100 + len(input)
+	}
+
+	score := 0
+	ti := 0
+	for _, ch := range input {
+		for ti < len(target) {
+			ti++
+			if rune(target[ti-1]) == ch {
+				score += 10
+				break
+			}
+		}
+		if ti >= len(target) {
+			score -= 5
+		}
+	}
+	if score > 0 && strings.HasPrefix(target, input) {
+		score += 20
+	}
+	return score
+}
+
 func (p *CommandPalette) SetFilter(filter string) {
 	p.filter = filter
 	p.selected = 0
@@ -104,14 +132,31 @@ func (p *CommandPalette) SetFilter(filter string) {
 		return
 	}
 
-	lower := strings.ToLower(filter)
-	var matched []CommandEntry
+	type scoredEntry struct {
+		entry CommandEntry
+		score int
+	}
+
+	var scored []scoredEntry
 	for _, e := range p.entries {
-		if strings.Contains(strings.ToLower(e.Command), lower) {
-			matched = append(matched, e)
+		s := fuzzyScore(filter, e.Command)
+		if s > 0 {
+			scored = append(scored, scoredEntry{entry: e, score: s})
 		}
 	}
-	p.filtered = matched
+
+	for i := 0; i < len(scored); i++ {
+		for j := i + 1; j < len(scored); j++ {
+			if scored[j].score > scored[i].score {
+				scored[i], scored[j] = scored[j], scored[i]
+			}
+		}
+	}
+
+	p.filtered = make([]CommandEntry, len(scored))
+	for i, se := range scored {
+		p.filtered[i] = se.entry
+	}
 }
 
 func (p *CommandPalette) Filter() string {
@@ -233,6 +278,14 @@ func (p *CommandPalette) View() string {
 			paddedCmd = string([]rune(cmd)[:cmdW])
 		} else {
 			paddedCmd = cmd + strings.Repeat(" ", cmdW-len([]rune(cmd)))
+		}
+
+		descMax := p.width - 10 - cmdW
+		if descMax < 0 {
+			descMax = 0
+		}
+		if len([]rune(desc)) > descMax {
+			desc = string([]rune(desc)[:descMax])
 		}
 
 		lines = append(lines, fmt.Sprintf("%s %s%s %s",
